@@ -211,7 +211,11 @@ npm run lint
 npm run format
 ```
 
-Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NODE_OPTIONS=--use-system-ca` al `.env`.
+Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NODE_OPTIONS=--use-system-ca` al `.env`. Síntoma: todas las rutas devuelven `UPSTREAM_ERROR` y el log dice `fetch failed … self-signed certificate`.
+
+**Base nueva o recién clonada:** las tablas propias NO se crean solas. Si `/api/poroteos` responde `SERVICE_UNAVAILABLE` ("Falta una tabla o función…"), pegá cada archivo de `supabase/migrations/` en el SQL Editor de Supabase, en orden. Sin eso no se puede crear un poroteo y "Votó con su bloque" sale vacío.
+
+PDFs: se aceptan por MIME (`application/pdf`) o, si el navegador manda `application/octet-stream`/vacío (pasa en Windows), por extensión `.pdf`. El contenido se valida por la firma `%PDF-`.
 
 ### Agregar un endpoint (checklist)
 

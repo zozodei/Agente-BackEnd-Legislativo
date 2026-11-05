@@ -153,6 +153,22 @@ describe('Poroteos', () => {
     expect(res.body.error.message).toMatch(/PDF/);
   });
 
+  it('POST acepta un PDF enviado como octet-stream (Windows) y corrige tildes del nombre', async () => {
+    poroteos.createPoroteo.mockResolvedValue({ id: UUID, titulo: 'Ley de prueba' });
+    const res = await request(app)
+      .post('/api/poroteos')
+      .field('titulo', 'Ley de prueba')
+      .field('tipoMayoria', 'absoluta')
+      .attach('archivo', Buffer.from('%PDF-1.4 ...'), {
+        filename: 'Ley de educación.pdf',
+        contentType: 'application/octet-stream',
+      });
+    expect(res.status).toBe(201);
+    const [body, archivo] = poroteos.createPoroteo.mock.calls[0];
+    expect(body).toMatchObject({ titulo: 'Ley de prueba', tipoMayoria: 'absoluta' });
+    expect(archivo.originalname).toBe('Ley de educación.pdf');
+  });
+
   it('GET /:id valida UUID', async () => {
     const res = await request(app).get('/api/poroteos/123');
     expect(res.status).toBe(400);
