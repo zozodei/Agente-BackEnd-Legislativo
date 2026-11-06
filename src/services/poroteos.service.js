@@ -9,6 +9,9 @@ import { calcularResultado } from './resultado.js';
 /*
  * Las tablas poroteos / poroteo_votos tienen RLS sin políticas públicas:
  * solo se acceden con supabaseAdmin (clave secreta) desde este service.
+ * Como supabaseAdmin saltea RLS, TODAS las queries filtran por user_id:
+ * cada usuario solo ve y edita sus propios poroteos. Un poroteo ajeno
+ * responde 404 (no revelamos que existe).
  */
 
 const POROTEO_COLUMNS =
@@ -59,6 +62,7 @@ async function fetchVotos(poroteoIds) {
 }
 
 export async function createPoroteo(
+  usuario,
   { titulo, descripcion, textoProyecto, tipoMayoria, autor },
   archivo,
 ) {
@@ -77,7 +81,8 @@ export async function createPoroteo(
         texto_proyecto: texto,
         archivo_nombre: archivo?.originalname ?? null,
         tipo_mayoria: tipoMayoria,
-        autor: autor ?? null,
+        autor: autor ?? usuario.nombre ?? null,
+        user_id: usuario.id,
         camara: 'diputados',
         origen: 'manual',
       })
@@ -85,12 +90,15 @@ export async function createPoroteo(
       .single(),
     'poroteos.create',
   );
-  return getPoroteo(data.id);
+  return getPoroteo(usuario.id, data.id);
 }
 
-export async function listPoroteos({ q, page, pageSize }) {
+export async function listPoroteos(userId, { q, page, pageSize }) {
   const { from, to } = toRange(page, pageSize);
-  let query = supabaseAdmin.from('poroteos').select(POROTEO_COLUMNS, { count: 'exact' });
+  let query = supabaseAdmin
+    .from('poroteos')
+    .select(POROTEO_COLUMNS, { count: 'exact' })
+    .eq('user_id', userId);
   if (q) {
     const term = sanitizeSearch(q);
     if (term) query = query.ilike('titulo', `%${term}%`);
@@ -116,12 +124,13 @@ export async function listPoroteos({ q, page, pageSize }) {
   );
 }
 
-export async function getPoroteo(id) {
+export async function getPoroteo(userId, id) {
   const { data: row } = unwrap(
     await supabaseAdmin
       .from('poroteos')
       .select(`${POROTEO_COLUMNS},texto_proyecto`)
       .eq('id', id)
+      .eq('user_id', userId)
       .maybeSingle(),
     'poroteos.get',
   );
@@ -139,7 +148,7 @@ export async function getPoroteo(id) {
   };
 }
 
-export async function updatePoroteo(id, changes) {
+export async function updatePoroteo(userId, id, changes) {
   const patch = {};
   if (changes.titulo !== undefined) patch.titulo = changes.titulo;
   if (changes.descripcion !== undefined) patch.descripcion = changes.descripcion;
@@ -149,11 +158,16 @@ export async function updatePoroteo(id, changes) {
   if (changes.autor !== undefined) patch.autor = changes.autor;
 
   const { data } = unwrap(
-    await supabaseAdmin.from('poroteos').update(patch).eq('id', id).select('id'),
+    await supabaseAdmin
+      .from('poroteos')
+      .update(patch)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id'),
     'poroteos.update',
   );
   if (!data.length) throw AppError.notFound(`No existe el poroteo ${id}`);
-  return getPoroteo(id);
+  return getPoroteo(userId, id);
 }
 
 /**
@@ -161,9 +175,14 @@ export async function updatePoroteo(id, changes) {
  * - merge:   upsert de los diputados enviados.
  * - replace: borra todo y guarda solo los enviados.
  */
-export async function saveVotos(id, { modo, votos }) {
+export async function saveVotos(userId, id, { modo, votos }) {
   const { data: existe } = unwrap(
-    await supabaseAdmin.from('poroteos').select('id').eq('id', id).maybeSingle(),
+    await supabaseAdmin
+      .from('poroteos')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle(),
     'poroteos.exists',
   );
   if (!existe) throw AppError.notFound(`No existe el poroteo ${id}`);
@@ -202,14 +221,17 @@ export async function saveVotos(id, { modo, votos }) {
   // Toca updated_at del poroteo y recalcula su origen (manual / ia / mixto).
   const origenes = new Set((await fetchVotos([id])).map((v) => v.origen));
   const origen = origenes.has('ia') ? (origenes.has('manual') ? 'mixto' : 'ia') : 'manual';
-  unwrap(await supabaseAdmin.from('poroteos').update({ origen }).eq('id', id), 'poroteos.touch');
+  unwrap(
+    await supabaseAdmin.from('poroteos').update({ origen }).eq('id', id).eq('user_id', userId),
+    'poroteos.touch',
+  );
 
-  return getPoroteo(id);
+  return getPoroteo(userId, id);
 }
 
-export async function deletePoroteo(id) {
+export async function deletePoroteo(userId, id) {
   const { data } = unwrap(
-    await supabaseAdmin.from('poroteos').delete().eq('id', id).select('id'),
+    await supabaseAdmin.from('poroteos').delete().eq('id', id).eq('user_id', userId).select('id'),
     'poroteos.delete',
   );
   if (!data.length) throw AppError.notFound(`No existe el poroteo ${id}`);

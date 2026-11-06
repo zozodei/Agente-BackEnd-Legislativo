@@ -1,7 +1,9 @@
 import { Router } from 'express';
 import { validate } from '../middlewares/validate.js';
-import { writeLimiter } from '../middlewares/rateLimit.js';
+import { authLimiter, writeLimiter } from '../middlewares/rateLimit.js';
+import { requireAuth } from '../middlewares/auth.js';
 import { uploadPdf } from '../middlewares/upload.js';
+import * as auth from '../controllers/auth.controller.js';
 import * as catalogos from '../controllers/catalogos.controller.js';
 import * as diputados from '../controllers/diputados.controller.js';
 import * as poroteos from '../controllers/poroteos.controller.js';
@@ -12,6 +14,7 @@ import {
   listDiputadosQuery,
   votosDiputadoQuery,
 } from '../validators/diputados.validator.js';
+import { loginBody, refreshBody, registroBody } from '../validators/auth.validator.js';
 import { listVotacionesQuery, votacionParams } from '../validators/votaciones.validator.js';
 import {
   createPoroteoBody,
@@ -45,8 +48,16 @@ router.get('/votaciones', validate({ query: listVotacionesQuery }), votaciones.l
 router.get('/votaciones/:id', validate({ params: votacionParams }), votaciones.get);
 router.get('/stats/resumen', stats.resumen);
 
-// ── Poroteo manual (tablas propias) ────────────────────────────────────────
-router.use('/poroteos', writeLimiter);
+// ── Cuentas de usuario (Supabase Auth) ─────────────────────────────────────
+router.post('/auth/registro', authLimiter, validate({ body: registroBody }), auth.registro);
+router.post('/auth/login', authLimiter, validate({ body: loginBody }), auth.login);
+router.post('/auth/refresh', writeLimiter, validate({ body: refreshBody }), auth.refresh);
+router.post('/auth/logout', requireAuth, auth.logout);
+router.get('/auth/me', requireAuth, auth.me);
+
+// ── Poroteo manual (tablas propias, requiere sesión) ───────────────────────
+// Cada usuario ve y edita solo sus poroteos.
+router.use('/poroteos', writeLimiter, requireAuth);
 router.post('/poroteos', uploadPdf, validate({ body: createPoroteoBody }), poroteos.create);
 router.get('/poroteos', validate({ query: listPoroteosQuery }), poroteos.list);
 router.get('/poroteos/:id', validate({ params: poroteoParams }), poroteos.get);

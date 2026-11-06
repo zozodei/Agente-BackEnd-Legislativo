@@ -29,6 +29,12 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(60),
+  RATE_LIMIT_AUTH_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60_000),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
   CACHE_DIPUTADOS_MINUTOS: z.coerce.number().nonnegative().default(10),
 });
 
