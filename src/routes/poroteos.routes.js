@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { autenticar } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validate.js';
 import { writeLimiter } from '../middlewares/rateLimit.js';
 import { uploadPdf } from '../middlewares/upload.js';
@@ -13,7 +14,15 @@ import {
 
 const router = Router();
 
-router.use('/poroteos', writeLimiter);
+router.use(
+  '/poroteos',
+  autenticar,
+  (_req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    next();
+  },
+  writeLimiter,
+);
 router.post('/poroteos', uploadPdf, validate({ body: createPoroteoBody }), poroteos.create);
 router.get('/poroteos', validate({ query: listPoroteosQuery }), poroteos.list);
 router.get('/poroteos/:id', validate({ params: poroteoParams }), poroteos.get);

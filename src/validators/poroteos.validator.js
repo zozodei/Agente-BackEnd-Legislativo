@@ -10,17 +10,20 @@ const estado = z.enum(['borrador', 'final']);
 const autor = z.string().trim().max(120).optional().nullable();
 
 /** Body de creación. Llega como JSON o como multipart/form-data (con PDF opcional). */
-export const createPoroteoBody = z.object({
-  titulo,
-  descripcion,
-  textoProyecto,
-  tipoMayoria: tipoMayoria.default('simple'),
-  autor,
-});
+export const createPoroteoBody = z
+  .object({
+    titulo,
+    descripcion,
+    textoProyecto,
+    tipoMayoria: tipoMayoria.default('simple'),
+    autor,
+  })
+  .strict();
 
 export const updatePoroteoBody = z
   .object({ titulo, descripcion, textoProyecto, tipoMayoria, estado, autor })
   .partial()
+  .strict()
   .refine((body) => Object.keys(body).length > 0, { message: 'No hay campos para actualizar' });
 
 export const poroteoParams = uuidParams;
@@ -51,6 +54,7 @@ export const putVotosBody = z
     modo: z.enum(['merge', 'replace']).default('merge'),
     votos: z.array(votoItem).max(300),
   })
+  .strict()
   .refine((body) => new Set(body.votos.map((v) => v.diputadoId)).size === body.votos.length, {
     message: 'Hay diputados repetidos en la lista de votos',
     path: ['votos'],

@@ -1,5 +1,6 @@
 class Poroteo {
     id;
+    user_id;
     titulo;
     descripcion;
     texto_proyecto;

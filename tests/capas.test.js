@@ -1,4 +1,17 @@
-import request from 'supertest';
+import supertest from 'supertest';
+
+// Identidad validada simulada; las pruebas de aislamiento ejercitan Auth real con doble.
+vi.mock('../src/services/auth.service.js', () => ({
+  getUsuario: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111', rol: 'usuario' })),
+}));
+function request(app) {
+  const agent = supertest(app);
+  for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+    const original = agent[method].bind(agent);
+    agent[method] = (...args) => original(...args).set('Authorization', 'Bearer prueba');
+  }
+  return agent;
+}
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Se ejercitan rutas, controllers, services y repositories reales. Solo se dobla
@@ -289,6 +302,7 @@ describe('Poroteos a través de todas las capas', () => {
     expect(res.headers.location).toBe(path);
     expect(extractPdfText).toHaveBeenCalledWith(Buffer.from('%PDF-prueba'));
     expect(insert.insert).toHaveBeenCalledWith({
+      user_id: '11111111-1111-4111-8111-111111111111',
       titulo: 'Ley de prueba',
       descripcion: null,
       texto_proyecto: 'Texto pegado\n\nTexto extraído',

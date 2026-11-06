@@ -1,4 +1,17 @@
-import request from 'supertest';
+import supertest from 'supertest';
+
+// Identidad validada simulada; las pruebas de aislamiento ejercitan Auth real con doble.
+vi.mock('../src/services/auth.service.js', () => ({
+  getUsuario: vi.fn(async () => ({ id: '11111111-1111-4111-8111-111111111111', rol: 'usuario' })),
+}));
+function request(app) {
+  const agent = supertest(app);
+  for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
+    const original = agent[method].bind(agent);
+    agent[method] = (...args) => original(...args).set('Authorization', 'Bearer prueba');
+  }
+  return agent;
+}
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Los services se mockean: estos tests prueban rutas, validación y formato de errores,
@@ -136,6 +149,7 @@ describe('Poroteos', () => {
     expect(poroteos.createPoroteo).toHaveBeenCalledWith(
       expect.objectContaining({ titulo: 'Ley de prueba', tipoMayoria: 'simple' }),
       undefined,
+      '11111111-1111-4111-8111-111111111111',
     );
   });
 
@@ -183,10 +197,14 @@ describe('Poroteos', () => {
       .put(`/api/poroteos/${UUID}/votos`)
       .send({ votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
     expect(res.status).toBe(200);
-    expect(poroteos.saveVotos).toHaveBeenCalledWith(UUID, {
-      modo: 'merge',
-      votos: [{ diputadoId: 1, voto: 'AFIRMATIVO', origen: 'manual' }],
-    });
+    expect(poroteos.saveVotos).toHaveBeenCalledWith(
+      UUID,
+      {
+        modo: 'merge',
+        votos: [{ diputadoId: 1, voto: 'AFIRMATIVO', origen: 'manual' }],
+      },
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('DELETE responde 204', async () => {

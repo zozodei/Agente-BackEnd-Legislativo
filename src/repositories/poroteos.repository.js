@@ -3,6 +3,11 @@ import { fetchAll, sanitizeSearch, unwrap } from '../utils/supabaseHelpers.js';
 import { toRange } from '../utils/pagination.js';
 import { AppError } from '../utils/AppError.js';
 
+function propietario(query, userId) {
+  if (!userId) throw new AppError(401, 'UNAUTHORIZED', 'Se requiere iniciar sesión');
+  return query.eq('user_id', userId);
+}
+
 const POROTEO_COLUMNS =
   'id,titulo,descripcion,archivo_nombre,camara,tipo_mayoria,estado,origen,autor,metadata,created_at,updated_at';
 
@@ -38,6 +43,7 @@ export async function fetchVotos(poroteoIds) {
  * @returns {Promise<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>}
  */
 export async function insertPoroteo(row) {
+  if (!row.user_id) throw new AppError(401, 'UNAUTHORIZED', 'Se requiere iniciar sesión');
   return unwrap(
     await supabaseAdmin.from('poroteos').insert(row).select(POROTEO_COLUMNS).single(),
     'poroteos.create',
@@ -45,9 +51,18 @@ export async function insertPoroteo(row) {
 }
 
 /** @returns {Promise<{data: Array<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>, count: number | null | undefined}>} */
-export async function fetchPoroteos({ q, page, pageSize }) {
+export function fetchPoroteos(params, userId) {
+  return listar(params, (query) => propietario(query, userId));
+}
+
+// Exclusivo del service administrativo protegido. Nunca usar como fallback.
+export function fetchPoroteosGlobal(params) {
+  return listar(params, (query) => query);
+}
+
+async function listar({ q, page, pageSize }, scope) {
   const { from, to } = toRange(page, pageSize);
-  let query = supabaseAdmin.from('poroteos').select(POROTEO_COLUMNS, { count: 'exact' });
+  let query = scope(supabaseAdmin.from('poroteos').select(POROTEO_COLUMNS, { count: 'exact' }));
   if (q) {
     const term = sanitizeSearch(q);
     if (term) query = query.ilike('titulo', `%${term}%`);
@@ -61,13 +76,19 @@ export async function fetchPoroteos({ q, page, pageSize }) {
 }
 
 /** @returns {Promise<import('../entities/Poroteo.js').default | null>} */
-export async function fetchPoroteo(id) {
+export function fetchPoroteo(id, userId) {
+  return obtener(id, (query) => propietario(query, userId));
+}
+
+export function fetchPoroteoGlobal(id) {
+  return obtener(id, (query) => query);
+}
+
+async function obtener(id, scope) {
   const { data: row } = unwrap(
-    await supabaseAdmin
-      .from('poroteos')
-      .select(`${POROTEO_COLUMNS},texto_proyecto`)
-      .eq('id', id)
-      .maybeSingle(),
+    await scope(
+      supabaseAdmin.from('poroteos').select(`${POROTEO_COLUMNS},texto_proyecto`).eq('id', id),
+    ).maybeSingle(),
     'poroteos.get',
   );
   return row;
@@ -78,18 +99,23 @@ export async function fetchPoroteo(id) {
  * @param {Partial<import('../entities/Poroteo.js').default>} patch
  * @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>}
  */
-export async function updatePoroteo(id, patch) {
+export async function updatePoroteo(id, patch, userId) {
   const { data } = unwrap(
-    await supabaseAdmin.from('poroteos').update(patch).eq('id', id).select('id'),
+    await propietario(supabaseAdmin.from('poroteos').update(patch).eq('id', id), userId).select(
+      'id',
+    ),
     'poroteos.update',
   );
   return data;
 }
 
 /** @returns {Promise<Pick<import('../entities/Poroteo.js').default, 'id'> | null>} */
-export async function fetchPoroteoId(id) {
+export async function fetchPoroteoId(id, userId) {
   const { data: existe } = unwrap(
-    await supabaseAdmin.from('poroteos').select('id').eq('id', id).maybeSingle(),
+    await propietario(
+      supabaseAdmin.from('poroteos').select('id').eq('id', id),
+      userId,
+    ).maybeSingle(),
     'poroteos.exists',
   );
   return existe;
@@ -115,14 +141,17 @@ export async function upsertVotos(rows) {
   );
 }
 
-export async function touchPoroteo(id, origen) {
-  unwrap(await supabaseAdmin.from('poroteos').update({ origen }).eq('id', id), 'poroteos.touch');
+export async function touchPoroteo(id, origen, userId) {
+  unwrap(
+    await propietario(supabaseAdmin.from('poroteos').update({ origen }).eq('id', id), userId),
+    'poroteos.touch',
+  );
 }
 
 /** @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>} */
-export async function deletePoroteo(id) {
+export async function deletePoroteo(id, userId) {
   const { data } = unwrap(
-    await supabaseAdmin.from('poroteos').delete().eq('id', id).select('id'),
+    await propietario(supabaseAdmin.from('poroteos').delete().eq('id', id), userId).select('id'),
     'poroteos.delete',
   );
   return data;

@@ -13,8 +13,8 @@ vi.mock('../src/config/supabase.js', () => ({
 }));
 vi.mock('../src/services/stats.service.js', () => ({ getResumen: vi.fn() }));
 vi.mock('../src/services/poroteos.service.js', () => ({
-  listPoroteos: vi.fn(),
-  getPoroteo: vi.fn(),
+  listPoroteosGlobal: vi.fn(),
+  getPoroteoGlobal: vi.fn(),
 }));
 vi.mock('../src/repositories/poroteos.repository.js', () => ({ countPoroteos: vi.fn() }));
 
@@ -54,11 +54,11 @@ beforeEach(() => {
   countPoroteos.mockImplementation(async (estado) =>
     estado === 'borrador' ? 3 : estado === 'final' ? 2 : 5,
   );
-  poroteos.listPoroteos.mockResolvedValue({
+  poroteos.listPoroteosGlobal.mockResolvedValue({
     data: [],
     meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   });
-  poroteos.getPoroteo.mockResolvedValue({ id: UUID, titulo: 'Proyecto', votos: [] });
+  poroteos.getPoroteoGlobal.mockResolvedValue({ id: UUID, titulo: 'Proyecto', votos: [] });
   supabaseAdmin.auth.admin.listUsers.mockResolvedValue({
     data: { users: [], total: 0 },
     error: null,
@@ -85,8 +85,8 @@ describe('Guard en todo /api/admin', () => {
     expect(res.status).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
     expect(countPoroteos).not.toHaveBeenCalled();
-    expect(poroteos.listPoroteos).not.toHaveBeenCalled();
-    expect(poroteos.getPoroteo).not.toHaveBeenCalled();
+    expect(poroteos.listPoroteosGlobal).not.toHaveBeenCalled();
+    expect(poroteos.getPoroteoGlobal).not.toHaveBeenCalled();
     expect(supabaseAdmin.auth.admin.listUsers).not.toHaveBeenCalled();
   });
   it.each(LISTA)('email permitido y confirmado accede a todo: %s', async (email) => {
@@ -244,9 +244,9 @@ describe('Consultas administrativas', () => {
   });
   it('listado y detalle usan los servicios actuales sin escribir', async () => {
     await autorizado('/api/admin/poroteos?q=ley&page=2');
-    expect(poroteos.listPoroteos).toHaveBeenCalledWith({ q: 'ley', page: 2, pageSize: 20 });
+    expect(poroteos.listPoroteosGlobal).toHaveBeenCalledWith({ q: 'ley', page: 2, pageSize: 20 });
     const res = await autorizado(`/api/admin/poroteos/${UUID}`);
-    expect(poroteos.getPoroteo).toHaveBeenCalledWith(UUID);
+    expect(poroteos.getPoroteoGlobal).toHaveBeenCalledWith(UUID);
     expect(res.body.data.titulo).toBe('Proyecto');
   });
   it('roles no alteran el role de PostgreSQL ni persisten metadata', () => {

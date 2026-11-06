@@ -143,20 +143,21 @@ RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni 
 
 `poroteos`
 
-| Columna                     | Tipo        | Notas                                                     |
-| --------------------------- | ----------- | --------------------------------------------------------- |
-| `id`                        | uuid PK     | `gen_random_uuid()`                                       |
-| `titulo`                    | text        | 3–300 caracteres                                          |
-| `descripcion`               | text        | ≤ 5000                                                    |
-| `texto_proyecto`            | text        | texto pegado o extraído del PDF (insumo para la IA)       |
-| `archivo_nombre`            | text        | nombre del PDF (el archivo no se guarda)                  |
-| `camara`                    | text        | `diputados` / `senadores` (hoy siempre diputados)         |
-| `tipo_mayoria`              | text        | `simple` / `absoluta` / `dos_tercios`                     |
-| `estado`                    | text        | `borrador` / `final`                                      |
-| `origen`                    | text        | `manual` / `ia` / `mixto` (se recalcula al guardar votos) |
-| `autor`                     | text        | libre (hasta que haya auth)                               |
-| `metadata`                  | jsonb       | libre (ej. leyes similares que use la IA)                 |
-| `created_at` / `updated_at` | timestamptz | trigger `set_updated_at`                                  |
+| Columna                     | Tipo          | Notas                                                               |
+| --------------------------- | ------------- | ------------------------------------------------------------------- |
+| `user_id`                   | uuid nullable | FK a auth.users(id), ON DELETE CASCADE; NULL = anterior sin asignar |
+| `id`                        | uuid PK       | `gen_random_uuid()`                                                 |
+| `titulo`                    | text          | 3–300 caracteres                                                    |
+| `descripcion`               | text          | ≤ 5000                                                              |
+| `texto_proyecto`            | text          | texto pegado o extraído del PDF (insumo para la IA)                 |
+| `archivo_nombre`            | text          | nombre del PDF (el archivo no se guarda)                            |
+| `camara`                    | text          | `diputados` / `senadores` (hoy siempre diputados)                   |
+| `tipo_mayoria`              | text          | `simple` / `absoluta` / `dos_tercios`                               |
+| `estado`                    | text          | `borrador` / `final`                                                |
+| `origen`                    | text          | `manual` / `ia` / `mixto` (se recalcula al guardar votos)           |
+| `autor`                     | text          | libre (hasta que haya auth)                                         |
+| `metadata`                  | jsonb         | libre (ej. leyes similares que use la IA)                           |
+| `created_at` / `updated_at` | timestamptz   | trigger `set_updated_at`                                            |
 
 `poroteo_votos` (PK `poroteo_id + diputado_id`)
 
@@ -220,6 +221,9 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 | PUT    | `/poroteos/:id/votos`  | `{ modo: 'merge' / 'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                   | Valida que los diputados existan                                                                                                                |
 | DELETE | `/poroteos/:id`        |                                                                                                                                 | 204                                                                                                                                             |
 
+Todas las operaciones normales de `/poroteos` requieren Bearer y propietario;
+los IDs ajenos o sin dueño devuelven 404. Los DTO se conservan.
+
 ### Cálculo del resultado (`services/resultado.js`)
 
 - Presentes = afirmativos + negativos + abstenciones. **Quórum = 129.**
@@ -251,7 +255,7 @@ Todo `/api/admin`, incluso rutas futuras, está protegido y usa `no-store`.
 `admin.repository.js` usa la clave secreta únicamente para **listar** cuentas Auth
 con `listUsers({ page, perPage })`. El service devuelve solo cinco campos. No se
 agregan operaciones administrativas de escritura. Los demás endpoints de
-poroteos mantienen exactamente sus permisos anteriores.
+poroteos normales requieren propietario; el backoffice conserva consulta global.
 
 La interfaz `/backoffice` está en el repo frontend: resumen, cuentas, listado y
 detalle de poroteos, exclusivamente de consulta. Pasos manuales, contratos,
@@ -282,10 +286,12 @@ usan `accessToken`, `refreshToken`, `expiresIn`, `expiresAt` (segundos Unix),
 Logout revoca el refresh de la sesión actual; un access token ya emitido puede
 seguir siendo válido hasta vencer.
 
-Los endpoints de poroteos conservan su comportamiento anterior y no tienen
-aislación por usuario. El login del frontend no constituye autorización de esos
-datos en el backend. Asociar dueños y restringir accesos requiere una tarea
-específica con cambios de esquema que debe aplicar el usuario manualmente.
+Todas las rutas normales `/api/poroteos` exigen Bearer validado y filtran por
+`poroteos.user_id = req.usuario.id`, incluidos conteos, actualizaciones y borrados.
+Los votos requieren autorizar el padre. Sin sesión: 401; ajeno, NULL o inexistente: 404. POST/PATCH rechazan propietario enviado por el cliente; `autor` es descriptivo.
+Solo el backoffice superadmin mantiene consulta global, sin escrituras globales.
+Modelo, migración local no aplicada y asignación administrativa explícita de
+registros anteriores: [poroteos privados](docs/poroteos-privados.md).
 
 ## 5. Seguridad: reglas que no se rompen
 
@@ -367,7 +373,7 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 
 3. **Correcciones de organizaciones:** tabla con trazabilidad (quién cambió qué voto y por qué).
 
-4. Autenticación implementada con Supabase Auth (`/api/auth/*`). Pendiente: asociar poroteos a usuarios, usar `autor` real y definir aislamiento/RLS. No se modificó la base para esta integración.
+4. Autenticación implementada con Supabase Auth (`/api/auth/*`). Poroteos privados por `user_id` implementados. `autor` sigue descriptivo. Migración local compatible con el esquema preparado; no aplicada al remoto.
 
 5. **Senado:** cargar senadores, `camara='senadores'` en poroteos (quórum 37 de 72). Generalizar `diputado_id` → `legislador_id`.
 

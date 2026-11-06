@@ -101,13 +101,9 @@ registro → confirmación → login → recarga → logout con su propia cuenta
 
 ## Pendientes separados
 
-Los poroteos siguen teniendo las reglas y accesos anteriores: no hay relación de
-dueño con `auth.users` ni protección por usuario en sus endpoints. La interfaz
-puede exigir login, pero eso no agrega autorización al backend. Para hacerlos
-privados se necesita diseñar `usuario_id`/dueño, asignar o tratar los poroteos
-existentes y ajustar filtros/autorización/RLS. No crear columnas improvisadas ni
-una tabla `usuarios` para resolverlo. Esa migración debe prepararse en una tarea
-específica y aplicarse manualmente por el usuario.
+Los poroteos ya exigen sesión validada y propietario `user_id` en el backend.
+Ver [poroteos privados](poroteos-privados.md) para el esquema, autorización,
+registros anteriores y comprobación de dos cuentas. No se crea tabla usuarios.
 
 El cliente frontend actual borra la sesión cuando `/auth/refresh` recibe cualquier
 HTTP no exitoso, incluso un 502/429 temporal; se conserva ese comportamiento y

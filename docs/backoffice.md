@@ -67,7 +67,8 @@ El rol de cada cuenta se calcula con la misma función que autoriza al solicitan
 Las métricas de poroteos usan conteos exactos de la base; los datos de Cámara y
 votaciones usan el servicio existente. Si falla un origen se muestra error, sin
 datos de ejemplo como sustituto. Los conteos pueden cambiar entre solicitudes.
-No se modifican los endpoints habituales ni su visibilidad, propiedad o permisos.
+Las rutas normales filtran por `user_id`, incluso para superadmins. Solo este
+backoffice conserva consulta global, incluyendo registros con `user_id NULL`.
 
 ## Frontend
 
@@ -116,5 +117,5 @@ directo, error, carga, vacío y paginación. No hay dependencias nuevas.
 La configuración real y el ciclo de registro/confirmación de los tres titulares
 quedan a cargo del usuario. No se ejecutó SQL ni se modificó Supabase. Los problemas
 previos de formato (entities de cuatro espacios y CSS del hemiciclo) no se mezclan
-con esta funcionalidad. Los poroteos habituales siguen sin aislamiento de dueño
-según el backend actual: este backoffice no cambia esa condición.
+con esta funcionalidad. El aislamiento actual de poroteos está documentado en
+[poroteos privados](poroteos-privados.md). No hay escrituras globales.

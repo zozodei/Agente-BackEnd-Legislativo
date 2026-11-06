@@ -1,7 +1,10 @@
 import * as adminRepository from '../repositories/admin.repository.js';
 import { countPoroteos } from '../repositories/poroteos.repository.js';
 import { getResumen as getResumenCamara } from './stats.service.js';
-import { listPoroteos, getPoroteo } from './poroteos.service.js';
+import {
+  listPoroteosGlobal as listPoroteos,
+  getPoroteoGlobal as getPoroteo,
+} from './poroteos.service.js';
 import { resolverRol } from './roles.service.js';
 import { paginated } from '../utils/pagination.js';
 

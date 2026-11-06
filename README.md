@@ -92,6 +92,9 @@ Base: `/api`. Respuestas: `{ data }` o `{ data, meta }` si es paginada. Errores:
 | `PUT`    | `/poroteos/:id/votos`  | Guardar votos estimados (`modo: merge \| replace`)                          |
 | `DELETE` | `/poroteos/:id`        | Borrar                                                                      |
 
+Todas las rutas `/poroteos` requieren Bearer; listan y operan solo sobre el dueño
+verificado. Ver [modelo privado](docs/poroteos-privados.md).
+
 Más detalle (formatos, reglas de cálculo, esquema) en [`CLAUDE.md`](CLAUDE.md).
 
 ## Estructura
@@ -198,7 +201,7 @@ Todo `/api/admin`, incluso rutas futuras, está protegido y usa `no-store`.
 `admin.repository.js` usa la clave secreta únicamente para **listar** cuentas Auth
 con `listUsers({ page, perPage })`. El service devuelve solo cinco campos. No se
 agregan operaciones administrativas de escritura. Los demás endpoints de
-poroteos mantienen exactamente sus permisos anteriores.
+poroteos normales requieren propietario; el backoffice conserva consulta global.
 
 La interfaz `/backoffice` está en el repo frontend: resumen, cuentas, listado y
 detalle de poroteos, exclusivamente de consulta. Pasos manuales, contratos,
@@ -229,10 +232,12 @@ usan `accessToken`, `refreshToken`, `expiresIn`, `expiresAt` (segundos Unix),
 Logout revoca el refresh de la sesión actual; un access token ya emitido puede
 seguir siendo válido hasta vencer.
 
-Los endpoints de poroteos conservan su comportamiento anterior y no tienen
-aislación por usuario. El login del frontend no constituye autorización de esos
-datos en el backend. Asociar dueños y restringir accesos requiere una tarea
-específica con cambios de esquema que debe aplicar el usuario manualmente.
+Todas las rutas normales `/api/poroteos` exigen Bearer validado y filtran por
+`poroteos.user_id = req.usuario.id`, incluidos conteos, actualizaciones y borrados.
+Los votos requieren autorizar el padre. Sin sesión: 401; ajeno, NULL o inexistente: 404. POST/PATCH rechazan propietario enviado por el cliente; `autor` es descriptivo.
+Solo el backoffice superadmin mantiene consulta global, sin escrituras globales.
+Modelo, migración local no aplicada y asignación administrativa explícita de
+registros anteriores: [poroteos privados](docs/poroteos-privados.md).
 
 ## Problemas frecuentes
 

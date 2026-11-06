@@ -100,3 +100,11 @@ alineación conservan sus proyecciones propias; no se etiquetan como una fila de
 `new Diputado()` contiene campos con valor `undefined`. Los services siguen
 construyendo explícitamente los DTO camelCase de la API y no serializan entities
 completas al frontend.
+
+## Propietario de poroteos
+
+`Poroteo.user_id` refleja el UUID nullable de Auth; no tiene lógica ni defaults.
+La migración `20261106132353_poroteos_user_id.sql` registra la FK
+`poroteos.user_id -> auth.users.id ON DELETE CASCADE` y el índice de propietario
+y fecha. Registros NULL conservados; ver [autorización](../../docs/poroteos-privados.md).
+El esquema remoto preparado fue informado por el usuario; no se modificó aquí.
