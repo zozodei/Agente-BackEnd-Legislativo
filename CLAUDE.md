@@ -20,7 +20,7 @@ Node ≥ 20, Express 5, JavaScript con ES Modules (`"type": "module"`, imports c
 React (Vite)  →  este backend (Express)  →  Supabase (Postgres + Storage)
 ```
 
-Arquitectura en capas. **Cada capa solo llama a la de abajo:**
+Flujo: **Ruta → Controller → Service → Repository → Supabase**. Los services también pueden coordinar otros services; los repositories no dependen de Express ni preparan DTOs.
 
 ```
 src/
@@ -29,17 +29,25 @@ src/
     supabase.js     `supabase` (clave pública, lectura), `supabaseAdmin` (clave secreta), createAuthClient()
     logger.js       pino (pretty en dev, JSON en prod, silent en test)
     constants.js    257 bancas, quórum 129, tipos de voto, fuente de datos
-  routes/index.js   TODOS los endpoints: ruta + validate(...) + controller
+  routes/index.js   compone los routers por recurso y /health
+  routes/*.routes.js endpoints + validate(...) + middlewares + controller
   controllers/      finos: leen req.valid.*, llaman al service, responden. Sin lógica.
-  services/         lógica de negocio + queries a Supabase. Devuelven DTOs en camelCase.
+  services/         reglas de negocio, caché y DTOs camelCase; sin SDK de Supabase.
     diputados.service.js   caché de los 257, perfil, historial de votos
     catalogos.service.js   bloques y distritos (derivados de los diputados cacheados)
     votaciones.service.js  listado y detalle de votaciones
     stats.service.js       resumen del panel de inicio
     auth.service.js        registro/login/refresh/logout con Supabase Auth + verificarToken()
-    poroteos.service.js    CRUD de poroteos (usa supabaseAdmin, SIEMPRE filtra por user_id)
+    poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados; recibe
+                           el usuario de la sesión (poroteos.repository SIEMPRE filtra por user_id)
     resultado.js           cálculo PURO del resultado de un poroteo (quórum, mayorías)
     pdf.service.js         extrae texto de PDFs (unpdf)
+  entities/         clases simples de tablas, campos snake_case y JSDoc; sin lógica
+  repositories/     consultas a Supabase; devuelven filas y traducen errores con unwrap
+    diputados.repository.js   vista actual, mandatos, historial y RPC de alineación
+    votaciones.repository.js  votaciones, votos, fotos, leyes y conteos
+    poroteos.repository.js    tablas propias, exclusivamente con supabaseAdmin
+    metadata.repository.js    lectura de cv_meta con cliente público
   middlewares/
     validate.js       valida params/query/body con zod → deja el resultado en req.valid
     auth.js           requireAuth: valida "Authorization: Bearer" → req.usuario { id, email, nombre }
@@ -56,8 +64,24 @@ src/
   app.js            createApp(): helmet, cors, pino-http, json, rate limit, router, errores
   server.js         listen + apagado prolijo
 supabase/migrations/  SQL versionado de las tablas propias (aplicar en orden)
-tests/                Vitest + Supertest (services mockeados, nunca red)
+tests/                Vitest + Supertest: contratos HTTP, capas con cliente doble y cálculo puro; nunca red
 ```
+
+### Entities de tablas
+
+`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+inicializadores y `export default`. Son la excepción al estilo de módulos con
+funciones: no contienen lógica, validación, consultas ni carga de relaciones.
+Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
+proyecciones, sin instanciar filas ni cambiar valores. Los services mantienen los
+DTO camelCase; las entities conservan las columnas snake_case. No representan
+vistas ni RPC. No convertir fechas, numeric o bigint ni aplicar defaults en ellas.
+
+El [inventario de entities](src/entities/README.md) documenta correspondencias,
+claves, relaciones y límites de verificación: las tablas propias se contrastaron
+con la migración local, y los metadatos del resto quedan pendientes porque el
+conector rechazó la consulta de lectura por permisos. No asumir tipos ni nulabilidad
+por los valores del frontend. No mezclar IDs de catálogos actuales e históricos.
 
 ## 3. Base de datos (Supabase)
 
@@ -196,8 +220,8 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 
 - **Nunca** commitear `.env` ni claves. Solo `.env.example` sin valores reales.
 - La clave secreta (`SUPABASE_SECRET_KEY`) vive **solo** acá. Nunca en el front, logs, respuestas ni issues.
-- Endpoints con datos de un usuario → `requireAuth` en la ruta + filtrar por `req.usuario.id` en el service.
-- `supabaseAdmin` solo en services de tablas propias. Para datos de ¿Cómo Votó? usar `supabase` (pública).
+- Endpoints con datos de un usuario → `requireAuth` en `*.routes.js` + pasar `req.usuario.id` al service y filtrar por `user_id` en el repository.
+- `supabaseAdmin` solo en repositories de tablas propias. Para datos de ¿Cómo Votó? usar `supabase` (pública).
 - Toda entrada (params, query, body) pasa por `validate()` con zod. No leer `req.query` / `req.body` crudos en controllers: usar `req.valid.*`.
 - Texto de búsqueda que va a `.or()` / `.ilike()` pasa por `sanitizeSearch()`.
 - Tablas nuevas: **siempre** `enable row level security`. Sin políticas si solo escribe el backend.
@@ -235,11 +259,15 @@ Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NO
 ### Agregar un endpoint (checklist)
 
 1. Esquema zod en `validators/<recurso>.validator.js`.
-2. Lógica en `services/<recurso>.service.js` (usar `unwrap`, devolver DTO camelCase).
+2. Consultas en `repositories/<recurso>.repository.js` (usar `unwrap`/`fetchAll`, devolver filas); reglas y DTO camelCase en `services/<recurso>.service.js`. No crear repositories sin consultas propias.
 3. Controller fino en `controllers/`.
-4. Ruta en `routes/index.js` con `validate(...)`.
-5. Test en `tests/api.test.js`.
+4. Ruta en `routes/<recurso>.routes.js` con `validate(...)`; registrar el router en `routes/index.js` si es nuevo. Conservar el orden de los middlewares.
+5. Contrato HTTP en `tests/api.test.js` y regresiones de consultas/reglas en `tests/capas.test.js` con dobles de cliente, sin red.
 6. Actualizar la tabla de endpoints de este archivo y del README.
+
+### Limitación existente del guardado de votos
+
+El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el borrado y el upsert en operaciones independientes. No es una transacción: si falla la escritura después de borrar, los votos anteriores ya fueron eliminados. La actualización de origen y la lectura final también son operaciones separadas. Este refactor conserva esa secuencia y propaga los errores; resolver la atomicidad queda para una tarea específica de base de datos.
 
 ## 8. Roadmap
 

@@ -1,11 +1,7 @@
-import { supabase } from '../config/supabase.js';
+import * as votacionesRepository from '../repositories/votaciones.repository.js';
 import { RESULTADOS_VALIDOS } from '../config/constants.js';
 import { AppError } from '../utils/AppError.js';
-import { paginated, toRange } from '../utils/pagination.js';
-import { fetchAll, sanitizeSearch, unwrap } from '../utils/supabaseHelpers.js';
-
-const LIST_COLUMNS =
-  'id,titulo,titulo_sitio,nombre_ley,ley_id,etiqueta,es_general,fecha,anio,resultado,afirmativos,negativos,abstenciones,ausentes,url';
+import { paginated } from '../utils/pagination.js';
 
 /**
  * Algunos registros traen el resultado como número (error del dato original).
@@ -61,95 +57,38 @@ export async function listVotaciones({
   page,
   pageSize,
 }) {
-  const { from, to } = toRange(page, pageSize);
-  let query = supabase
-    .from('cv_votaciones')
-    .select(LIST_COLUMNS, { count: 'exact' })
-    .eq('camara', 'diputados');
-
-  if (q) {
-    const term = sanitizeSearch(q);
-    if (term) {
-      query = query.or(
-        `titulo.ilike.%${term}%,titulo_sitio.ilike.%${term}%,nombre_ley.ilike.%${term}%`,
-      );
-    }
-  }
-  if (desde) query = query.gte('fecha', `${desde}T00:00:00`);
-  if (hasta) query = query.lte('fecha', `${hasta}T23:59:59`);
-  if (anio) query = query.eq('anio', anio);
-  if (resultado) query = query.eq('resultado', resultado);
-  if (soloGeneral) query = query.eq('es_general', true);
-
-  const { data, count } = unwrap(
-    await query
-      .order('fecha', { ascending: false })
-      .order('id', { ascending: false })
-      .range(from, to),
-    'votaciones.list',
-  );
+  const { data, count } = await votacionesRepository.fetchVotaciones({
+    q,
+    desde,
+    hasta,
+    anio,
+    resultado,
+    soloGeneral,
+    page,
+    pageSize,
+  });
   return paginated(data.map(toVotacionDTO), { page, pageSize, total: count ?? 0 });
 }
 
 /** Últimas votaciones (para el panel de inicio). */
 export async function latestVotaciones(limit = 6, soloGeneral = true) {
-  let query = supabase.from('cv_votaciones').select(LIST_COLUMNS).eq('camara', 'diputados');
-  if (soloGeneral) query = query.eq('es_general', true);
-  const { data } = unwrap(
-    await query.order('fecha', { ascending: false }).limit(limit),
-    'votaciones.latest',
-  );
+  const data = await votacionesRepository.fetchUltimasVotaciones(limit, soloGeneral);
   return data.map(toVotacionDTO);
 }
 
 /** Detalle completo de una votación, con el voto de cada diputado. */
 export async function getVotacion(id) {
-  const { data: row } = unwrap(
-    await supabase
-      .from('cv_votaciones')
-      .select('*')
-      .eq('id', id)
-      .eq('camara', 'diputados')
-      .maybeSingle(),
-    'votaciones.get',
-  );
+  const row = await votacionesRepository.fetchVotacion(id);
   if (!row) throw AppError.notFound(`No existe la votación ${id}`);
 
-  const votos = await fetchAll(
-    (from, to) =>
-      supabase
-        .from('v_votos')
-        .select('persona_id,legislador,diputado_actual_id,bloque,coalicion,provincia,voto')
-        .eq('votacion_id', id)
-        .order('legislador')
-        .range(from, to),
-    'votaciones.votos',
-  );
+  const votos = await votacionesRepository.fetchVotosVotacion(id);
 
-  const personaIds = votos.map((v) => v.persona_id);
-  const [fotosRes, leyRes, hermanasRes] = await Promise.all([
-    personaIds.length
-      ? supabase.from('v_personas').select('id,foto_url').in('id', personaIds)
-      : Promise.resolve({ data: [] }),
-    row.ley_id
-      ? supabase
-          .from('cv_leyes')
-          .select('id,nombre,nombre_comun,anio,keywords,cantidad_votaciones')
-          .eq('id', row.ley_id)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-    row.ley_id
-      ? supabase
-          .from('cv_votaciones')
-          .select('id,etiqueta,es_general,resultado,fecha')
-          .eq('ley_id', row.ley_id)
-          .order('fecha')
-          .limit(200)
-      : Promise.resolve({ data: [] }),
+  const [personas, ley, hermanas] = await Promise.all([
+    votacionesRepository.fetchFotos(votos.map((v) => v.persona_id)),
+    votacionesRepository.fetchLey(row.ley_id),
+    votacionesRepository.fetchVotacionesDeLey(row.ley_id),
   ]);
-  const fotos = new Map(unwrap(fotosRes, 'votaciones.fotos').data.map((p) => [p.id, p.foto_url]));
-  const { data: ley } = unwrap(leyRes, 'votaciones.ley');
-  const { data: hermanas } = unwrap(hermanasRes, 'votaciones.hermanas');
+  const fotos = new Map(personas.map((p) => [p.id, p.foto_url]));
 
   const porBloque = new Map();
   for (const v of votos) {

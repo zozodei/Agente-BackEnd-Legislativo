@@ -99,9 +99,12 @@ Más detalle (formatos, reglas de cálculo, esquema) en [`CLAUDE.md`](CLAUDE.md)
 ```
 src/
   config/        env (validación), cliente Supabase, logger, constantes
-  routes/        definición de endpoints
-  controllers/   request → service → response
-  services/      lógica de negocio y acceso a Supabase
+  routes/        index.js compone routers; *.routes.js define endpoints y middlewares
+  controllers/   req.valid → service → respuesta HTTP (status, headers y JSON)
+  services/      reglas, DTOs camelCase, caché y coordinación; sin SDK de Supabase
+                 (excepción: auth.service.js habla con Supabase Auth)
+  entities/      clases de tablas con campos públicos snake_case y JSDoc; sin lógica
+  repositories/  consultas a tablas, vistas y RPC; devuelven filas de la base
   middlewares/   validación, auth (token), errores, rate limit, upload
   validators/    esquemas zod
   utils/         helpers (errores, paginación, caché, Supabase)
@@ -110,6 +113,72 @@ src/
 supabase/migrations/   SQL de las tablas propias
 tests/                 Vitest + Supertest
 ```
+
+El flujo es **Ruta → Controller → Service → Repository → Supabase**. Los módulos
+siguen siendo funciones JavaScript con ES Modules. Los repositories no dependen de
+Express y usan los clientes de `config/supabase.js`: el público para datos históricos
+y el admin únicamente en `poroteos.repository.js` para las tablas propias.
+`unwrap()` centraliza los errores (502/503), `sanitizeSearch()` prepara filtros de
+texto y `fetchAll()` conserva las lecturas completas paginando de a 1000 filas.
+La RPC de alineación mantiene su excepción existente: si falta la función, el
+perfil devuelve `alineacionBloque: null`; otros errores se propagan.
+
+Los repositories son `diputados`, `votaciones`, `poroteos` y `metadata` (`cv_meta`).
+Catálogos deriva los conteos de diputados cacheados, por lo que no necesita un
+repository. Estadísticas coordina esos servicios y los repositories de votaciones
+y metadatos; tampoco tiene un repository propio. La extracción PDF sigue en
+`pdf.service.js` y el resultado es una función pura en `services/resultado.js`.
+Los routers conservan las rutas públicas completas y el orden de middlewares;
+para poroteos: límite de escritura → carga PDF (solo POST) → validación → controller.
+
+### Entities de tablas
+
+`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+inicializadores y `export default`. Son la excepción al estilo de módulos con
+funciones: no contienen lógica, validación, consultas ni carga de relaciones.
+Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
+proyecciones, sin instanciar filas ni cambiar valores. Los services mantienen los
+DTO camelCase; las entities conservan las columnas snake_case. No representan
+vistas ni RPC. No convertir fechas, numeric o bigint ni aplicar defaults en ellas.
+
+El [inventario de entities](src/entities/README.md) documenta correspondencias,
+claves, relaciones y límites de verificación: las tablas propias se contrastaron
+con la migración local, y los metadatos del resto quedan pendientes porque el
+conector rechazó la consulta de lectura por permisos. No asumir tipos ni nulabilidad
+por los valores del frontend. No mezclar IDs de catálogos actuales e históricos.
+
+### Ejemplo: agregar una funcionalidad
+
+Para agregar una consulta al historial de un diputado:
+
+1. Definir la entrada Zod en `validators/diputados.validator.js`.
+2. Agregar la consulta en `repositories/diputados.repository.js` usando el cliente
+   público y `unwrap()` (o `fetchAll()` si requiere todas las filas).
+3. Coordinarla y preparar el DTO camelCase en `services/diputados.service.js`.
+4. Agregar un controller fino en `controllers/diputados.controller.js` que lea
+   `req.valid` y construya la respuesta HTTP.
+5. Conectar validación y controller en `routes/diputados.routes.js`. El router ya
+   está registrado en `routes/index.js`.
+6. Cubrir el contrato y los errores con mocks de servicios en `tests/api.test.js`,
+   y las consultas y reglas con dobles del cliente en `tests/capas.test.js`.
+   Actualizar las tablas de endpoints del README, AGENTS y CLAUDE si cambia la API.
+
+### Validación y pendientes del refactor
+
+Las pruebas nunca usan la base real. `tests/capas.test.js` recorre las capas con
+clientes Supabase dobles y extracción PDF simulada; comprueba DTOs, errores,
+paginación, filtros, caché, carga PDF y guardado de votos. Las pruebas existentes
+de HTTP y del cálculo puro se conservan.
+
+Limitación previa pendiente: `replace` borra y después hace upsert en operaciones
+separadas, sin transacción. Si falla el upsert, los votos anteriores ya se borraron.
+El recálculo de origen y la lectura final también son independientes. Se conserva
+la secuencia y se cubre el fallo intermedio; resolver la atomicidad requiere una
+tarea posterior. No se agregaron funciones SQL ni migraciones.
+
+En la comprobación inicial pasaron 31 pruebas y lint; el chequeo de formato fallaba
+por el `AGENTS.md` local sin seguimiento. Se conservó su contenido y se actualizó
+la arquitectura y el formato junto con esta documentación.
 
 ## Problemas frecuentes
 

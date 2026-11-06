@@ -1,0 +1,141 @@
+import { supabaseAdmin } from '../config/supabase.js';
+import { fetchAll, sanitizeSearch, unwrap } from '../utils/supabaseHelpers.js';
+import { toRange } from '../utils/pagination.js';
+
+/*
+ * supabaseAdmin saltea RLS: por eso TODAS las queries sobre `poroteos` filtran por
+ * user_id. Cada usuario solo ve y edita sus poroteos; uno ajeno se comporta como
+ * inexistente (404, no revelamos que existe).
+ */
+
+const POROTEO_COLUMNS =
+  'id,titulo,descripcion,archivo_nombre,camara,tipo_mayoria,estado,origen,autor,metadata,created_at,updated_at';
+
+/** @returns {Promise<Array<import('../entities/PoroteoVoto.js').default>>} */
+export async function fetchVotos(poroteoIds) {
+  if (!poroteoIds.length) return [];
+  return fetchAll(
+    (from, to) =>
+      supabaseAdmin
+        .from('poroteo_votos')
+        .select('poroteo_id,diputado_id,voto,origen,confianza,justificacion,fuentes,updated_at')
+        .in('poroteo_id', poroteoIds)
+        .order('poroteo_id')
+        .order('diputado_id')
+        .range(from, to),
+    'poroteos.votos',
+  );
+}
+
+/**
+ * @param {Partial<import('../entities/Poroteo.js').default>} row
+ * @returns {Promise<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>}
+ */
+export async function insertPoroteo(row) {
+  return unwrap(
+    await supabaseAdmin.from('poroteos').insert(row).select(POROTEO_COLUMNS).single(),
+    'poroteos.create',
+  ).data;
+}
+
+/** @returns {Promise<{data: Array<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>, count: number | null | undefined}>} */
+export async function fetchPoroteos(userId, { q, page, pageSize }) {
+  const { from, to } = toRange(page, pageSize);
+  let query = supabaseAdmin
+    .from('poroteos')
+    .select(POROTEO_COLUMNS, { count: 'exact' })
+    .eq('user_id', userId);
+  if (q) {
+    const term = sanitizeSearch(q);
+    if (term) query = query.ilike('titulo', `%${term}%`);
+  }
+  const { data, count } = unwrap(
+    await query.order('updated_at', { ascending: false }).range(from, to),
+    'poroteos.list',
+  );
+
+  return { data, count };
+}
+
+/** @returns {Promise<import('../entities/Poroteo.js').default | null>} */
+export async function fetchPoroteo(userId, id) {
+  const { data: row } = unwrap(
+    await supabaseAdmin
+      .from('poroteos')
+      .select(`${POROTEO_COLUMNS},texto_proyecto`)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    'poroteos.get',
+  );
+  return row;
+}
+
+/**
+ * @param {string} userId
+ * @param {string} id
+ * @param {Partial<import('../entities/Poroteo.js').default>} patch
+ * @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>}
+ */
+export async function updatePoroteo(userId, id, patch) {
+  const { data } = unwrap(
+    await supabaseAdmin
+      .from('poroteos')
+      .update(patch)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('id'),
+    'poroteos.update',
+  );
+  return data;
+}
+
+/** @returns {Promise<Pick<import('../entities/Poroteo.js').default, 'id'> | null>} */
+export async function fetchPoroteoId(userId, id) {
+  const { data: existe } = unwrap(
+    await supabaseAdmin
+      .from('poroteos')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle(),
+    'poroteos.exists',
+  );
+  return existe;
+}
+
+export async function deleteVotos(id) {
+  unwrap(
+    await supabaseAdmin.from('poroteo_votos').delete().eq('poroteo_id', id),
+    'poroteos.votos.delete',
+  );
+}
+
+/**
+ * @param {Array<Partial<import('../entities/PoroteoVoto.js').default>>} rows
+ * @returns {Promise<void>}
+ */
+export async function upsertVotos(rows) {
+  unwrap(
+    await supabaseAdmin
+      .from('poroteo_votos')
+      .upsert(rows, { onConflict: 'poroteo_id,diputado_id' }),
+    'poroteos.votos.upsert',
+  );
+}
+
+export async function touchPoroteo(userId, id, origen) {
+  unwrap(
+    await supabaseAdmin.from('poroteos').update({ origen }).eq('id', id).eq('user_id', userId),
+    'poroteos.touch',
+  );
+}
+
+/** @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>} */
+export async function deletePoroteo(userId, id) {
+  const { data } = unwrap(
+    await supabaseAdmin.from('poroteos').delete().eq('id', id).eq('user_id', userId).select('id'),
+    'poroteos.delete',
+  );
+  return data;
+}
