@@ -17,6 +17,14 @@ const envSchema = z.object({
         .map((origin) => origin.trim().replace(/\/$/, ''))
         .filter(Boolean),
     ),
+  // URL pública del front (sin barra final). A FRONTEND_URL/auth/callback vuelve el login
+  // con Google: tiene que estar en Supabase → Authentication → URL Configuration → Redirect URLs.
+  // Si no se define, se usa el primer origen de CORS_ORIGINS.
+  FRONTEND_URL: z
+    .string()
+    .url('FRONTEND_URL debe ser una URL válida (ej: http://localhost:5173)')
+    .transform((value) => value.replace(/\/$/, ''))
+    .optional(),
   SUPABASE_URL: z
     .string({ required_error: 'Falta SUPABASE_URL' })
     .url('SUPABASE_URL debe ser una URL válida'),
@@ -50,7 +58,8 @@ function loadEnv() {
     );
     process.exit(1);
   }
-  return Object.freeze(parsed.data);
+  const data = parsed.data;
+  return Object.freeze({ ...data, FRONTEND_URL: data.FRONTEND_URL ?? data.CORS_ORIGINS[0] });
 }
 
 export const env = loadEnv();

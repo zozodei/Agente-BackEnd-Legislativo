@@ -25,6 +25,13 @@ export const loginBody = z.object({
   password: password.min(1, 'Falta la contraseña'),
 });
 
+export const googleCallbackBody = z.object({
+  code: z.string({ required_error: 'Falta el código de Google' }).trim().min(1).max(500),
+  codeVerifier: z
+    .string({ required_error: 'Falta el codeVerifier' })
+    .regex(/^[A-Za-z0-9._~-]{43,128}$/, 'codeVerifier inválido'),
+});
+
 export const refreshBody = z.object({
   refreshToken: z.string({ required_error: 'Falta el refreshToken' }).min(1).max(2000),
 });

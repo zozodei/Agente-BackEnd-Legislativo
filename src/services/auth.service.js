@@ -8,22 +8,28 @@ import { AppError } from '../utils/AppError.js';
  * como "Authorization: Bearer <token>" en cada request protegida.
  */
 
-function toUsuarioDTO(user) {
+/** Nombre visible: el del registro, o el que trae Google (full_name / name). */
+export function nombreDe(metadata) {
+  const nombre = metadata?.nombre ?? metadata?.full_name ?? metadata?.name ?? null;
+  return typeof nombre === 'string' && nombre.trim() ? nombre.trim().slice(0, 120) : null;
+}
+
+export function toUsuarioDTO(user) {
   return {
     id: user.id,
     email: user.email,
-    nombre: user.user_metadata?.nombre ?? null,
+    nombre: nombreDe(user.user_metadata),
     createdAt: user.created_at ?? null,
   };
 }
 
-function toSesionDTO(session) {
+export function toSesionDTO(session) {
   return {
     accessToken: session.access_token,
     refreshToken: session.refresh_token,
     expiresIn: session.expires_in,
     // Segundos desde epoch (Unix). El front renueva un poco antes con /auth/refresh.
-    expiresAt: session.expires_at,
+    expiresAt: session.expires_at ?? Math.floor(Date.now() / 1000) + session.expires_in,
     tokenType: 'bearer',
   };
 }
@@ -140,6 +146,6 @@ export async function verificarToken(accessToken) {
   return {
     id: claims.sub,
     email: claims.email ?? null,
-    nombre: claims.user_metadata?.nombre ?? null,
+    nombre: nombreDe(claims.user_metadata),
   };
 }
