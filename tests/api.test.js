@@ -211,6 +211,7 @@ describe('Poroteos', () => {
     poroteos.createPoroteo.mockResolvedValue({ id: UUID, titulo: 'Ley de prueba' });
     const res = await request(app)
       .post('/api/poroteos')
+      .set('Authorization', BEARER)
       .field('titulo', 'Ley de prueba')
       .field('tipoMayoria', 'absoluta')
       .attach('archivo', Buffer.from('%PDF-1.4 ...'), {
@@ -218,7 +219,8 @@ describe('Poroteos', () => {
         contentType: 'application/octet-stream',
       });
     expect(res.status).toBe(201);
-    const [body, archivo] = poroteos.createPoroteo.mock.calls[0];
+    const [usuario, body, archivo] = poroteos.createPoroteo.mock.calls[0];
+    expect(usuario).toEqual(USUARIO);
     expect(body).toMatchObject({ titulo: 'Ley de prueba', tipoMayoria: 'absoluta' });
     expect(archivo.originalname).toBe('Ley de educación.pdf');
   });
