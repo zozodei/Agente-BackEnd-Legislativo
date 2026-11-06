@@ -56,6 +56,7 @@ src/
     poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados
     resultado.js           cálculo PURO del resultado de un poroteo (quórum, mayorías)
     pdf.service.js         extrae texto de PDFs (unpdf)
+  entities/         clases simples de tablas, campos snake_case y JSDoc; sin lógica
   repositories/     consultas a Supabase; devuelven filas y traducen errores con unwrap
     diputados.repository.js   vista actual, mandatos, historial y RPC de alineación
     votaciones.repository.js  votaciones, votos, fotos, leyes y conteos
@@ -78,6 +79,22 @@ src/
 supabase/migrations/  SQL versionado de las tablas propias (aplicar en orden)
 tests/                Vitest + Supertest: contratos HTTP, capas con cliente doble y cálculo puro; nunca red
 ```
+
+### Entities de tablas
+
+`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+inicializadores y `export default`. Son la excepción al estilo de módulos con
+funciones: no contienen lógica, validación, consultas ni carga de relaciones.
+Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
+proyecciones, sin instanciar filas ni cambiar valores. Los services mantienen los
+DTO camelCase; las entities conservan las columnas snake_case. No representan
+vistas ni RPC. No convertir fechas, numeric o bigint ni aplicar defaults en ellas.
+
+El [inventario de entities](src/entities/README.md) documenta correspondencias,
+claves, relaciones y límites de verificación: las tablas propias se contrastaron
+con la migración local, y los metadatos del resto quedan pendientes porque el
+conector rechazó la consulta de lectura por permisos. No asumir tipos ni nulabilidad
+por los valores del frontend. No mezclar IDs de catálogos actuales e históricos.
 
 ## 3. Base de datos (Supabase)
 

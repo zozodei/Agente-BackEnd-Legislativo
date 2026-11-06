@@ -93,6 +93,7 @@ src/
   routes/        index.js compone routers; *.routes.js define endpoints y middlewares
   controllers/   req.valid → service → respuesta HTTP (status, headers y JSON)
   services/      reglas, DTOs camelCase, caché y coordinación; sin SDK de Supabase
+  entities/      clases de tablas con campos públicos snake_case y JSDoc; sin lógica
   repositories/  consultas a tablas, vistas y RPC; devuelven filas de la base
   middlewares/   validación, errores, rate limit, upload
   validators/    esquemas zod
@@ -119,6 +120,22 @@ y metadatos; tampoco tiene un repository propio. La extracción PDF sigue en
 `pdf.service.js` y el resultado es una función pura en `services/resultado.js`.
 Los routers conservan las rutas públicas completas y el orden de middlewares;
 para poroteos: límite de escritura → carga PDF (solo POST) → validación → controller.
+
+### Entities de tablas
+
+`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+inicializadores y `export default`. Son la excepción al estilo de módulos con
+funciones: no contienen lógica, validación, consultas ni carga de relaciones.
+Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
+proyecciones, sin instanciar filas ni cambiar valores. Los services mantienen los
+DTO camelCase; las entities conservan las columnas snake_case. No representan
+vistas ni RPC. No convertir fechas, numeric o bigint ni aplicar defaults en ellas.
+
+El [inventario de entities](src/entities/README.md) documenta correspondencias,
+claves, relaciones y límites de verificación: las tablas propias se contrastaron
+con la migración local, y los metadatos del resto quedan pendientes porque el
+conector rechazó la consulta de lectura por permisos. No asumir tipos ni nulabilidad
+por los valores del frontend. No mezclar IDs de catálogos actuales e históricos.
 
 ### Ejemplo: agregar una funcionalidad
 

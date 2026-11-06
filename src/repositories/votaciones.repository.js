@@ -5,6 +5,7 @@ import { toRange } from '../utils/pagination.js';
 const LIST_COLUMNS =
   'id,titulo,titulo_sitio,nombre_ley,ley_id,etiqueta,es_general,fecha,anio,resultado,afirmativos,negativos,abstenciones,ausentes,url';
 
+/** @returns {Promise<{data: Array<Partial<import('../entities/CvVotacion.js').default>>, count: number | null | undefined}>} */
 export async function fetchVotaciones({
   q,
   desde,
@@ -45,6 +46,7 @@ export async function fetchVotaciones({
   return { data, count };
 }
 
+/** @returns {Promise<Array<Partial<import('../entities/CvVotacion.js').default>>>} */
 export async function fetchUltimasVotaciones(limit, soloGeneral) {
   let query = supabase.from('cv_votaciones').select(LIST_COLUMNS).eq('camara', 'diputados');
   if (soloGeneral) query = query.eq('es_general', true);
@@ -55,6 +57,7 @@ export async function fetchUltimasVotaciones(limit, soloGeneral) {
   return data;
 }
 
+/** @returns {Promise<import('../entities/CvVotacion.js').default | null>} */
 export async function fetchVotacion(id) {
   const { data: row } = unwrap(
     await supabase
@@ -91,6 +94,7 @@ export async function fetchFotos(personaIds) {
   ).data;
 }
 
+/** @returns {Promise<Partial<import('../entities/CvLey.js').default> | null>} */
 export async function fetchLey(leyId) {
   if (!leyId) return null;
   return unwrap(
@@ -103,6 +107,7 @@ export async function fetchLey(leyId) {
   ).data;
 }
 
+/** @returns {Promise<Array<Partial<import('../entities/CvVotacion.js').default>>>} */
 export async function fetchVotacionesDeLey(leyId) {
   if (!leyId) return [];
   return unwrap(

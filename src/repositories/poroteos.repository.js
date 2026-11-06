@@ -5,6 +5,7 @@ import { toRange } from '../utils/pagination.js';
 const POROTEO_COLUMNS =
   'id,titulo,descripcion,archivo_nombre,camara,tipo_mayoria,estado,origen,autor,metadata,created_at,updated_at';
 
+/** @returns {Promise<Array<import('../entities/PoroteoVoto.js').default>>} */
 export async function fetchVotos(poroteoIds) {
   if (!poroteoIds.length) return [];
   return fetchAll(
@@ -20,6 +21,10 @@ export async function fetchVotos(poroteoIds) {
   );
 }
 
+/**
+ * @param {Partial<import('../entities/Poroteo.js').default>} row
+ * @returns {Promise<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>}
+ */
 export async function insertPoroteo(row) {
   return unwrap(
     await supabaseAdmin.from('poroteos').insert(row).select(POROTEO_COLUMNS).single(),
@@ -27,6 +32,7 @@ export async function insertPoroteo(row) {
   ).data;
 }
 
+/** @returns {Promise<{data: Array<Omit<import('../entities/Poroteo.js').default, 'texto_proyecto'>>, count: number | null | undefined}>} */
 export async function fetchPoroteos({ q, page, pageSize }) {
   const { from, to } = toRange(page, pageSize);
   let query = supabaseAdmin.from('poroteos').select(POROTEO_COLUMNS, { count: 'exact' });
@@ -42,6 +48,7 @@ export async function fetchPoroteos({ q, page, pageSize }) {
   return { data, count };
 }
 
+/** @returns {Promise<import('../entities/Poroteo.js').default | null>} */
 export async function fetchPoroteo(id) {
   const { data: row } = unwrap(
     await supabaseAdmin
@@ -54,6 +61,11 @@ export async function fetchPoroteo(id) {
   return row;
 }
 
+/**
+ * @param {string} id
+ * @param {Partial<import('../entities/Poroteo.js').default>} patch
+ * @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>}
+ */
 export async function updatePoroteo(id, patch) {
   const { data } = unwrap(
     await supabaseAdmin.from('poroteos').update(patch).eq('id', id).select('id'),
@@ -62,6 +74,7 @@ export async function updatePoroteo(id, patch) {
   return data;
 }
 
+/** @returns {Promise<Pick<import('../entities/Poroteo.js').default, 'id'> | null>} */
 export async function fetchPoroteoId(id) {
   const { data: existe } = unwrap(
     await supabaseAdmin.from('poroteos').select('id').eq('id', id).maybeSingle(),
@@ -77,6 +90,10 @@ export async function deleteVotos(id) {
   );
 }
 
+/**
+ * @param {Array<Partial<import('../entities/PoroteoVoto.js').default>>} rows
+ * @returns {Promise<void>}
+ */
 export async function upsertVotos(rows) {
   unwrap(
     await supabaseAdmin
@@ -90,6 +107,7 @@ export async function touchPoroteo(id, origen) {
   unwrap(await supabaseAdmin.from('poroteos').update({ origen }).eq('id', id), 'poroteos.touch');
 }
 
+/** @returns {Promise<Array<Pick<import('../entities/Poroteo.js').default, 'id'>>>} */
 export async function deletePoroteo(id) {
   const { data } = unwrap(
     await supabaseAdmin.from('poroteos').delete().eq('id', id).select('id'),

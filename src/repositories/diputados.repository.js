@@ -60,6 +60,9 @@ export async function fetchDiputado(id) {
   return row;
 }
 
+/** Proyección de public.cv_mandatos; no es una fila completa.
+ * @returns {Promise<Array<Partial<import('../entities/CvMandato.js').default>>>}
+ */
 export async function fetchMandatos(personaId) {
   const { data } = unwrap(
     await supabase
