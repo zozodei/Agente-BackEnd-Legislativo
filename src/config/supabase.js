@@ -8,6 +8,7 @@ export const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_PUBLISHABLE_
 
 /**
  * Cliente con la clave secreta: saltea RLS.
- * Usar SOLO en services que leen/escriben las tablas propias (poroteos).
+ * Usar SOLO en repositories de tablas propias (poroteos) y en admin.repository
+ * para listar cuentas de Auth. Nunca iniciar sesiones de usuarios con este cliente.
  */
 export const supabaseAdmin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, options);

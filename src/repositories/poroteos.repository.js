@@ -1,9 +1,21 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { fetchAll, sanitizeSearch, unwrap } from '../utils/supabaseHelpers.js';
 import { toRange } from '../utils/pagination.js';
+import { AppError } from '../utils/AppError.js';
 
 const POROTEO_COLUMNS =
   'id,titulo,descripcion,archivo_nombre,camara,tipo_mayoria,estado,origen,autor,metadata,created_at,updated_at';
+
+/** Conteo exacto para el panel de consulta, sin descargar todos los poroteos. */
+export async function countPoroteos(estado) {
+  let query = supabaseAdmin.from('poroteos').select('id', { count: 'exact', head: true });
+  if (estado) query = query.eq('estado', estado);
+  const { count } = unwrap(await query, 'admin.poroteos.count');
+  if (!Number.isInteger(count) || count < 0) {
+    throw AppError.upstream('No se pudo verificar el total de poroteos');
+  }
+  return count;
+}
 
 /** @returns {Promise<Array<import('../entities/PoroteoVoto.js').default>>} */
 export async function fetchVotos(poroteoIds) {

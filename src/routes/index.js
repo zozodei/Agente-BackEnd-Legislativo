@@ -5,10 +5,14 @@ import catalogosRoutes from './catalogos.routes.js';
 import votacionesRoutes from './votaciones.routes.js';
 import statsRoutes from './stats.routes.js';
 import poroteosRoutes from './poroteos.routes.js';
+import authRoutes from './auth.routes.js';
+import adminRoutes from './admin.routes.js';
 
 export const router = Router();
 
 router.get('/health', health);
+router.use(authRoutes);
+router.use(adminRoutes);
 router.use(diputadosRoutes);
 router.use(catalogosRoutes);
 router.use(votacionesRoutes);

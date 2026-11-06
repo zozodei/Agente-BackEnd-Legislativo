@@ -196,6 +196,15 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 | Método | Ruta                   | Query / Body                                                                                                                    | Notas                                                                                                                                           |
 | ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET    | `/health`              |                                                                                                                                 |                                                                                                                                                 |
+| POST   | `/auth/registro`       | `{ nombre, email, password }`                                                                                                   | 201; `{ data: { usuario, sesion, requiereConfirmacion } }`                                                                                      |
+| POST   | `/auth/login`          | `{ email, password }`                                                                                                           | 200; `{ data: { usuario, sesion } }`                                                                                                            |
+| POST   | `/auth/refresh`        | `{ refreshToken }`                                                                                                              | 200; `{ data: { usuario, sesion } }`                                                                                                            |
+| GET    | `/auth/me`             | `Authorization: Bearer <accessToken>`                                                                                           | 200; `{ data: usuario }`                                                                                                                        |
+| POST   | `/auth/logout`         | `Authorization: Bearer <accessToken>`                                                                                           | 204; revoca la sesión actual                                                                                                                    |
+| GET    | `/admin/resumen`       | Bearer superadmin                                                                                                               | 200; conteos verificados de poroteos y datos de Cámara                                                                                          |
+| GET    | `/admin/cuentas`       | `page`, `pageSize` (≤100), Bearer superadmin                                                                                    | Paginado; solo id, email, createdAt, lastSignInAt, rol                                                                                          |
+| GET    | `/admin/poroteos`      | `q`, `page`, `pageSize`, Bearer superadmin                                                                                      | Paginado de consulta, mismos DTO de poroteos                                                                                                    |
+| GET    | `/admin/poroteos/:id`  | UUID, Bearer superadmin                                                                                                         | Detalle de consulta con votos y resumen                                                                                                         |
 | GET    | `/diputados`           | `q`, `bloque`, `distrito`, `orden` (`apellido` / `bloque` / `distrito` / `presentismo`), `page`, `pageSize` (≤300, default 300) | Filtra en memoria sobre la caché                                                                                                                |
 | GET    | `/diputados/:id`       |                                                                                                                                 | `mandatos[]`, `estadisticas` (`total`, `conteo`, `porcentaje`, `alineacionBloque`, `porAnio`), `alineamientoAnual`, `alineamientoEra`           |
 | GET    | `/diputados/:id/votos` | `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize` (≤100)                                                                   | Desde `v_votos`, por `persona_id`                                                                                                               |
@@ -223,13 +232,68 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 
 - **El frontend tiene una copia** (`src/features/poroteo/resultado.ts`) para el contador en vivo. Si cambiás una, cambiá la otra (y sus tests).
 
+### Roles de aplicación y backoffice
+
+`usuario` y `superadmin` son roles de aplicación; no modifican `role` de
+PostgreSQL/Supabase ni se persisten en metadata. `roles.service.js` resuelve el
+rol con email completo normalizado y `email_confirmed_at` del usuario devuelto
+por Supabase. Debe estar en `SUPERADMIN_EMAILS` y ser uno de los tres emails
+habilitados en el código. La variable es exclusiva del backend, vacía por defecto,
+y se carga al iniciar: cambiarla requiere reiniciar el proceso. Lista vacía no
+concede privilegios. No se modifica el `.env` real.
+
+`/auth/me`, login y refresh exponen `usuario.rol`. Registro sin sesión siempre
+informa `usuario`. `autenticar` consulta `auth.getUser(token)` en cada solicitud
+administrativa y `soloSuperadmin` exige ese rol actual. Sin sesión válida: 401;
+sesión válida sin permiso: 403; proveedor caído: 502 sin reutilizar permisos.
+Todo `/api/admin`, incluso rutas futuras, está protegido y usa `no-store`.
+
+`admin.repository.js` usa la clave secreta únicamente para **listar** cuentas Auth
+con `listUsers({ page, perPage })`. El service devuelve solo cinco campos. No se
+agregan operaciones administrativas de escritura. Los demás endpoints de
+poroteos mantienen exactamente sus permisos anteriores.
+
+La interfaz `/backoffice` está en el repo frontend: resumen, cuentas, listado y
+detalle de poroteos, exclusivamente de consulta. Pasos manuales, contratos,
+archivos y pruebas en [docs/backoffice.md](docs/backoffice.md). No se ejecutó SQL
+ni se crearon cuentas o enviaron correos para implementar esto.
+
+### Registro e inicio de sesión
+
+Implementados con Supabase Auth, sin tabla propia `usuarios`. Contrato y pasos
+manuales en [docs/autenticacion.md](docs/autenticacion.md). El frontend existente
+ya usa estas rutas y DTO; no requiere cambios para registro/login/refresh/me/logout.
+Las cuentas se administran en Auth (`auth.users`) y `nombre` es metadata de
+presentación, nunca un permiso. No crear ni modificar manualmente esa tabla.
+
+Se usa un cliente público nuevo por operación en `config/supabaseAuth.js`, sin
+persistencia ni auto-refresh, para no compartir sesiones con otras solicitudes ni
+con el cliente histórico. `auth.repository.js` concentra las llamadas al SDK y
+`authErrors.js` traduce los errores sin registrar credenciales. Tokens Bearer se
+extraen con Zod a `req.valid.auth`; `me` los verifica con `auth.getUser(token)`.
+Login, registro y refresh comparten un límite de 20 intentos por IP por minuto,
+además del límite general. Respuestas `/auth/*`: `Cache-Control: no-store`.
+
+Errores nuevos: `UNAUTHORIZED` y `SESSION_EXPIRED` (401), `INVALID_CREDENTIALS`
+(401), `EMAIL_NOT_CONFIRMED` y `FORBIDDEN` (403), `CONFLICT` (409). Se mantienen
+`BAD_REQUEST` (400), `RATE_LIMITED` (429) y `UPSTREAM_ERROR` (502). Las sesiones
+usan `accessToken`, `refreshToken`, `expiresIn`, `expiresAt` (segundos Unix),
+`tokenType`. Un registro sin sesión devuelve `requiereConfirmacion: true`.
+Logout revoca el refresh de la sesión actual; un access token ya emitido puede
+seguir siendo válido hasta vencer.
+
+Los endpoints de poroteos conservan su comportamiento anterior y no tienen
+aislación por usuario. El login del frontend no constituye autorización de esos
+datos en el backend. Asociar dueños y restringir accesos requiere una tarea
+específica con cambios de esquema que debe aplicar el usuario manualmente.
+
 ## 5. Seguridad: reglas que no se rompen
 
 - **Nunca** commitear `.env` ni claves. Solo `.env.example` sin valores reales.
 
 - La clave secreta (`SUPABASE_SECRET_KEY`) vive **solo** acá. Nunca en el front, logs, respuestas ni issues.
 
-- `supabaseAdmin` solo en repositories de tablas propias. Para datos de ¿Cómo Votó? usar `supabase` (pública).
+- `supabaseAdmin` solo en repositories de tablas propias y en `admin.repository.js` para lectura paginada de cuentas Auth protegida por superadmin. Para datos de ¿Cómo Votó? usar `supabase` (pública).
 
 - Toda entrada (params, query, body) pasa por `validate()` con zod. No leer `req.query` / `req.body` crudos en controllers: usar `req.valid.*`.
 
@@ -303,7 +367,7 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 
 3. **Correcciones de organizaciones:** tabla con trazabilidad (quién cambió qué voto y por qué).
 
-4. **Autenticación** (Supabase Auth o propia) + RLS en tablas propias + `autor` real.
+4. Autenticación implementada con Supabase Auth (`/api/auth/*`). Pendiente: asociar poroteos a usuarios, usar `autor` real y definir aislamiento/RLS. No se modificó la base para esta integración.
 
 5. **Senado:** cargar senadores, `camara='senadores'` en poroteos (quórum 37 de 72). Generalizar `diputado_id` → `legislador_id`.
 

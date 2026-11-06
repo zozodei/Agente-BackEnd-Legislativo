@@ -24,3 +24,12 @@ export const writeLimiter = rateLimit({
   skip: (req) => ['GET', 'HEAD', 'OPTIONS'].includes(req.method),
   handler,
 });
+
+/** Limita intentos de registro/login/refresh, incluidos los rechazados. */
+export const authLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});

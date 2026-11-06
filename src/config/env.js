@@ -30,6 +30,18 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(60),
   CACHE_DIPUTADOS_MINUTOS: z.coerce.number().nonnegative().default(10),
+  // Ausente o vacía por defecto: no concede permisos.
+  SUPERADMIN_EMAILS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      Object.freeze(
+        value
+          .split(',')
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ),
 });
 
 function loadEnv() {
