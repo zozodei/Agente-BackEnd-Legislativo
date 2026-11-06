@@ -1,7 +1,7 @@
 import * as poroteosService from '../services/poroteos.service.js';
 
 export async function create(req, res) {
-  const poroteo = await poroteosService.createPoroteo(req.valid.body, req.file);
+  const poroteo = await poroteosService.createPoroteo(req.valid.body, req.file, req.usuario);
   res.status(201).location(`/api/poroteos/${poroteo.id}`).json({ data: poroteo });
 }
 

@@ -5,6 +5,7 @@ import catalogosRoutes from './catalogos.routes.js';
 import votacionesRoutes from './votaciones.routes.js';
 import statsRoutes from './stats.routes.js';
 import poroteosRoutes from './poroteos.routes.js';
+import authRoutes from './auth.routes.js';
 
 export const router = Router();
 
@@ -14,3 +15,4 @@ router.use(catalogosRoutes);
 router.use(votacionesRoutes);
 router.use(statsRoutes);
 router.use(poroteosRoutes);
+router.use(authRoutes);

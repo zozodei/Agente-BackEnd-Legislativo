@@ -16,6 +16,7 @@ function toPoroteoDTO(row) {
     estado: row.estado,
     origen: row.origen,
     autor: row.autor,
+    userId: row.user_id ?? null,
     metadata: row.metadata ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -37,6 +38,7 @@ function toVotoDTO(row) {
 export async function createPoroteo(
   { titulo, descripcion, textoProyecto, tipoMayoria, autor },
   archivo,
+  usuario,
 ) {
   let texto = textoProyecto ?? null;
   if (archivo) {
@@ -44,16 +46,21 @@ export async function createPoroteo(
     texto = [texto, extraido].filter(Boolean).join('\n\n') || null;
   }
 
-  const data = await poroteosRepository.insertPoroteo({
+  const fila = {
     titulo,
     descripcion: descripcion ?? null,
     texto_proyecto: texto,
     archivo_nombre: archivo?.originalname ?? null,
     tipo_mayoria: tipoMayoria,
-    autor: autor ?? null,
+    autor: autor ?? usuario?.nombre ?? usuario?.email ?? null,
     camara: 'diputados',
     origen: 'manual',
-  });
+  };
+  // Solo se manda user_id con login: los poroteos anónimos no lo tocan
+  // (así siguen funcionando aunque la migración de auth aún no esté aplicada).
+  if (usuario?.id) fila.user_id = usuario.id;
+
+  const data = await poroteosRepository.insertPoroteo(fila);
   return getPoroteo(data.id);
 }
 

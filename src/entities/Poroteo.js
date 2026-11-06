@@ -9,6 +9,7 @@ class Poroteo {
     estado;
     origen;
     autor;
+    user_id;
     metadata;
     created_at;
     updated_at;

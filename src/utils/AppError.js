@@ -16,6 +16,18 @@ export class AppError extends Error {
     return new AppError(404, 'NOT_FOUND', message);
   }
 
+  static unauthorized(message = 'Tenés que iniciar sesión', code = 'UNAUTHORIZED') {
+    return new AppError(401, code, message);
+  }
+
+  static forbidden(message = 'No tenés permiso para hacer esto', code = 'FORBIDDEN') {
+    return new AppError(403, code, message);
+  }
+
+  static conflict(message, details) {
+    return new AppError(409, 'CONFLICT', message, details);
+  }
+
   static upstream(message = 'Error consultando la base de datos', details) {
     return new AppError(502, 'UPSTREAM_ERROR', message, details);
   }

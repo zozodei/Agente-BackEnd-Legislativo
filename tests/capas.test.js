@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/config/supabase.js', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
   supabaseAdmin: { from: vi.fn() },
+  createAuthClient: vi.fn(),
 }));
 vi.mock('../src/services/pdf.service.js', () => ({ extractPdfText: vi.fn() }));
 
@@ -126,6 +127,7 @@ describe('Poroteos a través de todas las capas', () => {
       estado: 'borrador',
       origen: 'manual',
       autor: null,
+      userId: null,
       metadata: {},
       createdAt: '2026-11-01',
       updatedAt: '2026-11-06',

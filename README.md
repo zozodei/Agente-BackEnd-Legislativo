@@ -34,19 +34,22 @@ Si no se aplicaron, los endpoints de `/api/poroteos` responden `503 SERVICE_UNAV
 
 ## Variables de entorno
 
-| Variable                   | Obligatoria | Descripción                                                     |
-| -------------------------- | :---------: | --------------------------------------------------------------- |
-| `NODE_ENV`                 |             | `development` \| `production` \| `test` (default `development`) |
-| `PORT`                     |             | Puerto HTTP (default `4000`)                                    |
-| `LOG_LEVEL`                |             | Nivel de pino (default `info`)                                  |
-| `CORS_ORIGINS`             |     ✅      | Orígenes permitidos, separados por coma                         |
-| `SUPABASE_URL`             |     ✅      | URL del proyecto Supabase                                       |
-| `SUPABASE_PUBLISHABLE_KEY` |     ✅      | Clave pública (lectura)                                         |
-| `SUPABASE_SECRET_KEY`      |     ✅      | Clave secreta (escritura de poroteos). **Nunca** en el front    |
-| `RATE_LIMIT_WINDOW_MS`     |             | Ventana del rate limit en ms (default `60000`)                  |
-| `RATE_LIMIT_MAX`           |             | Requests por ventana por IP (default `300`)                     |
-| `RATE_LIMIT_WRITE_MAX`     |             | Escrituras por ventana por IP (default `60`)                    |
-| `CACHE_DIPUTADOS_MINUTOS`  |             | Caché en memoria de los 257 diputados (default `10`)            |
+| Variable                    | Obligatoria | Descripción                                                     |
+| --------------------------- | :---------: | --------------------------------------------------------------- |
+| `NODE_ENV`                  |             | `development` \| `production` \| `test` (default `development`) |
+| `PORT`                      |             | Puerto HTTP (default `4000`)                                    |
+| `LOG_LEVEL`                 |             | Nivel de pino (default `info`)                                  |
+| `CORS_ORIGINS`              |     ✅      | Orígenes permitidos, separados por coma                         |
+| `FRONTEND_URL`              |             | URL del frontend. Retorno Google: `FRONTEND_URL/auth/callback`  |
+| `SUPABASE_URL`              |     ✅      | URL del proyecto Supabase                                       |
+| `SUPABASE_PUBLISHABLE_KEY`  |     ✅      | Clave pública (lectura)                                         |
+| `SUPABASE_SECRET_KEY`       |     ✅      | Clave secreta (escritura de poroteos). **Nunca** en el front    |
+| `RATE_LIMIT_WINDOW_MS`      |             | Ventana del rate limit en ms (default `60000`)                  |
+| `RATE_LIMIT_MAX`            |             | Requests por ventana por IP (default `300`)                     |
+| `RATE_LIMIT_WRITE_MAX`      |             | Escrituras por ventana por IP (default `60`)                    |
+| `RATE_LIMIT_AUTH_WINDOW_MS` |             | Ventana auth en ms (default `900000`)                           |
+| `RATE_LIMIT_AUTH_MAX`       |             | Intentos auth por ventana por IP (default `20`)                 |
+| `CACHE_DIPUTADOS_MINUTOS`   |             | Caché en memoria de los 257 diputados (default `10`)            |
 
 Si falta una obligatoria, el servidor no levanta e indica cuál.
 
@@ -65,23 +68,56 @@ Si falta una obligatoria, el servidor no levanta e indica cuál.
 
 Base: `/api`. Respuestas: `{ data }` o `{ data, meta }` si es paginada. Errores: `{ error: { code, message, details? } }`.
 
-| Método   | Ruta                   | Descripción                                                                 |
-| -------- | ---------------------- | --------------------------------------------------------------------------- |
-| `GET`    | `/health`              | Estado del servicio                                                         |
-| `GET`    | `/diputados`           | Listado. Query: `q`, `bloque`, `distrito`, `orden`, `page`, `pageSize`      |
-| `GET`    | `/diputados/:id`       | Perfil completo: datos, mandatos, estadísticas, alineamientos               |
-| `GET`    | `/diputados/:id/votos` | Historial. Query: `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize`    |
-| `GET`    | `/bloques`             | Bloques actuales con cantidad de bancas                                     |
-| `GET`    | `/distritos`           | Distritos con cantidad de bancas                                            |
-| `GET`    | `/votaciones`          | Listado. Query: `q`, `desde`, `hasta`, `anio`, `resultado`, `soloGeneral`…  |
-| `GET`    | `/votaciones/:id`      | Detalle con conteo, porcentajes, voto de cada diputado y resumen por bloque |
-| `GET`    | `/stats/resumen`       | Números generales para el panel de inicio                                   |
-| `POST`   | `/poroteos`            | Crear (JSON o `multipart/form-data` con `archivo` PDF opcional)             |
-| `GET`    | `/poroteos`            | Listado con resumen del resultado                                           |
-| `GET`    | `/poroteos/:id`        | Detalle con votos y resultado calculado                                     |
-| `PATCH`  | `/poroteos/:id`        | Editar título, descripción, tipo de mayoría, estado                         |
-| `PUT`    | `/poroteos/:id/votos`  | Guardar votos estimados (`modo: merge \| replace`)                          |
-| `DELETE` | `/poroteos/:id`        | Borrar                                                                      |
+| Método   | Ruta                    | Descripción                                                                 |
+| -------- | ----------------------- | --------------------------------------------------------------------------- |
+| `GET`    | `/health`               | Estado del servicio                                                         |
+| `GET`    | `/diputados`            | Listado. Query: `q`, `bloque`, `distrito`, `orden`, `page`, `pageSize`      |
+| `GET`    | `/diputados/:id`        | Perfil completo: datos, mandatos, estadísticas, alineamientos               |
+| `GET`    | `/diputados/:id/votos`  | Historial. Query: `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize`    |
+| `GET`    | `/bloques`              | Bloques actuales con cantidad de bancas                                     |
+| `GET`    | `/distritos`            | Distritos con cantidad de bancas                                            |
+| `GET`    | `/votaciones`           | Listado. Query: `q`, `desde`, `hasta`, `anio`, `resultado`, `soloGeneral`…  |
+| `GET`    | `/votaciones/:id`       | Detalle con conteo, porcentajes, voto de cada diputado y resumen por bloque |
+| `GET`    | `/stats/resumen`        | Números generales para el panel de inicio                                   |
+| `POST`   | `/poroteos`             | Crear (JSON o `multipart/form-data` con `archivo` PDF opcional)             |
+| `GET`    | `/poroteos`             | Listado con resumen del resultado                                           |
+| `GET`    | `/poroteos/:id`         | Detalle con votos y resultado calculado                                     |
+| `PATCH`  | `/poroteos/:id`         | Editar título, descripción, tipo de mayoría, estado                         |
+| `PUT`    | `/poroteos/:id/votos`   | Guardar votos estimados (`modo: merge \| replace`)                          |
+| `DELETE` | `/poroteos/:id`         | Borrar                                                                      |
+| `GET`    | `/auth/google`          | URL OAuth de Google para login. Query: `redirectTo?`                        |
+| `POST`   | `/auth/google/id-token` | Sesión desde id_token de Google (One Tap / botones pre-armados)             |
+| `POST`   | `/auth/refresh`         | Renueva sesión con `refreshToken`                                           |
+| `POST`   | `/auth/logout`          | Cierra sesión. Requiere `Authorization: Bearer`                             |
+| `GET`    | `/auth/me`              | Usuario actual. Requiere `Authorization: Bearer`                            |
+
+Los poroteos siguen siendo públicos: con `Authorization: Bearer <token>` se
+guarda el dueño de Google en `user_id`/`autor`, sin token siguen anónimos.
+
+### Iniciar sesión con Google
+
+El front usa la URL del backend (no habla directo con Supabase):
+
+1. `GET /api/auth/google?redirectTo=http://localhost:5173/auth/callback` →
+   `{ data: { url } }`
+2. El navegador va a `url` (Supabase → Google → consentimiento).
+3. Supabase vuelve a `redirectTo` con el token en el hash
+   (`#access_token=...&refresh_token=...`). El front lo extrae y guarda ambas.
+4. `GET /api/auth/me` con `Authorization: Bearer <access_token>` valida y
+   devuelve `{ id, email, nombre, avatarUrl }`.
+5. Cada request posterior manda el Bearer. Para renovar, `POST /api/auth/refresh`.
+
+Setup obligatorio en Supabase:
+
+- Dashboard → Authentication → Providers → Google: habilitar, cargar
+  Client ID / Secret de Google Cloud.
+- Google Cloud → Credentials → OAuth Web: JavaScript origins incluye tu
+  frontend; Redirect URIs incluye el callback de Supabase
+  (`https://<project>.supabase.co/auth/v1/callback`).
+- Dashboard → URL Configuration: Site URL y Redirect URLs incluyen
+  `FRONTEND_URL/auth/callback`.
+- Aplicar la migración `20261106120000_auth_google.sql` (agrega
+  `poroteos.user_id`).
 
 Más detalle (formatos, reglas de cálculo, esquema) en [`CLAUDE.md`](CLAUDE.md).
 

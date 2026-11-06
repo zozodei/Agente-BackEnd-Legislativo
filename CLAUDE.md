@@ -26,7 +26,7 @@ Flujo: **Ruta → Controller → Service → Repository → Supabase**. Los serv
 src/
   config/
     env.js          valida process.env con zod; si falta algo, process.exit(1) diciendo qué
-    supabase.js     `supabase` (clave pública, lectura) y `supabaseAdmin` (clave secreta)
+    supabase.js     `supabase` (clave pública, lectura) y `supabaseAdmin` (clave secreta) + `createAuthClient()`
     logger.js       pino (pretty en dev, JSON en prod, silent en test)
     constants.js    257 bancas, quórum 129, tipos de voto, fuente de datos
   routes/index.js   compone los routers por recurso y /health
@@ -38,6 +38,7 @@ src/
     votaciones.service.js  listado y detalle de votaciones
     stats.service.js       resumen del panel de inicio
     poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados
+    auth.service.js        login con Google, verificación de token, refresh y logout
     resultado.js           cálculo PURO del resultado de un poroteo (quórum, mayorías)
     pdf.service.js         extrae texto de PDFs (unpdf)
   entities/         clases simples de tablas, campos snake_case y JSDoc; sin lógica
@@ -48,8 +49,9 @@ src/
     metadata.repository.js    lectura de cv_meta con cliente público
   middlewares/
     validate.js       valida params/query/body con zod → deja el resultado en req.valid
+    auth.js           requireAuth (Bearer obligatorio) y optionalAuth (Bearer opcional)
     errorHandler.js   notFound + manejador central de errores
-    rateLimit.js      apiLimiter (general) y writeLimiter (POST/PUT/PATCH/DELETE)
+    rateLimit.js      apiLimiter (general), writeLimiter (POST/PUT/PATCH/DELETE) y authLimiter
     upload.js         multer en memoria, solo PDF, 10 MB
   validators/       esquemas zod por recurso (+ common.js)
   utils/
@@ -121,26 +123,27 @@ cv_votaciones.ley_id    → cv_leyes.id
 
 Todas las vistas son `security_invoker`. Fotos: bucket público `fotos` en Storage (1.604). El front las carga directo con `foto_url`.
 
-### Tablas propias (migración `supabase/migrations/20261104120000_poroteos.sql`)
+### Tablas propias (migraciones `supabase/migrations/20261104120000_poroteos.sql` y `20261106120000_auth_google.sql`)
 
 RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni escribir. Solo el backend con `supabaseAdmin`.
 
 `poroteos`
 
-| Columna                     | Tipo        | Notas                                                       |
-| --------------------------- | ----------- | ----------------------------------------------------------- |
-| `id`                        | uuid PK     | `gen_random_uuid()`                                         |
-| `titulo`                    | text        | 3–300 caracteres                                            |
-| `descripcion`               | text        | ≤ 5000                                                      |
-| `texto_proyecto`            | text        | texto pegado o extraído del PDF (insumo para la IA)         |
-| `archivo_nombre`            | text        | nombre del PDF (el archivo no se guarda)                    |
-| `camara`                    | text        | `diputados` \| `senadores` (hoy siempre diputados)          |
-| `tipo_mayoria`              | text        | `simple` \| `absoluta` \| `dos_tercios`                     |
-| `estado`                    | text        | `borrador` \| `final`                                       |
-| `origen`                    | text        | `manual` \| `ia` \| `mixto` (se recalcula al guardar votos) |
-| `autor`                     | text        | libre (hasta que haya auth)                                 |
-| `metadata`                  | jsonb       | libre (ej. leyes similares que use la IA)                   |
-| `created_at` / `updated_at` | timestamptz | trigger `set_updated_at`                                    |
+| Columna                     | Tipo        | Notas                                                                                                           |
+| --------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `id`                        | uuid PK     | `gen_random_uuid()`                                                                                             |
+| `titulo`                    | text        | 3–300 caracteres                                                                                                |
+| `descripcion`               | text        | ≤ 5000                                                                                                          |
+| `texto_proyecto`            | text        | texto pegado o extraído del PDF (insumo para la IA)                                                             |
+| `archivo_nombre`            | text        | nombre del PDF (el archivo no se guarda)                                                                        |
+| `camara`                    | text        | `diputados` \| `senadores` (hoy siempre diputados)                                                              |
+| `tipo_mayoria`              | text        | `simple` \| `absoluta` \| `dos_tercios`                                                                         |
+| `estado`                    | text        | `borrador` \| `final`                                                                                           |
+| `origen`                    | text        | `manual` \| `ia` \| `mixto` (se recalcula al guardar votos)                                                     |
+| `autor`                     | text        | nombre/email de Google si hay sesión, o texto libre anónimo                                                     |
+| `user_id`                   | uuid FK     | → `auth.users.id`, nullable (`on delete cascade`). Null en anónimos. Migración `20261106120000_auth_google.sql` |
+| `metadata`                  | jsonb       | libre (ej. leyes similares que use la IA)                                                                       |
+| `created_at` / `updated_at` | timestamptz | trigger `set_updated_at`                                                                                        |
 
 `poroteo_votos` (PK `poroteo_id + diputado_id`)
 
@@ -169,25 +172,30 @@ Un diputado sin fila en `poroteo_votos` = **sin asignar** (cuenta como en disput
 
 ## 4. API
 
-Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, totalPages } }`. Simples → `{ data }`. Errores → `{ error: { code, message, details? } }` con códigos `BAD_REQUEST`, `NOT_FOUND`, `RATE_LIMITED`, `CORS_FORBIDDEN`, `UPSTREAM_ERROR` (502), `SERVICE_UNAVAILABLE` (503, falta migración), `INTERNAL_ERROR`.
+Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, totalPages } }`. Simples → `{ data }`. Errores → `{ error: { code, message, details? } }` con códigos `BAD_REQUEST`, `NOT_FOUND`, `UNAUTHORIZED` (401), `FORBIDDEN` (403), `RATE_LIMITED`, `CORS_FORBIDDEN`, `UPSTREAM_ERROR` (502), `SERVICE_UNAVAILABLE` (503, falta migración), `INTERNAL_ERROR`.
 
-| Método | Ruta                   | Query / Body                                                                                                                 | Notas                                                                                                                                           |
-| ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/health`              |                                                                                                                              |                                                                                                                                                 |
-| GET    | `/diputados`           | `q`, `bloque`, `distrito`, `orden` (`apellido`\|`bloque`\|`distrito`\|`presentismo`), `page`, `pageSize` (≤300, default 300) | Filtra en memoria sobre la caché                                                                                                                |
-| GET    | `/diputados/:id`       |                                                                                                                              | `mandatos[]`, `estadisticas` (`total`, `conteo`, `porcentaje`, `alineacionBloque`, `porAnio`), `alineamientoAnual`, `alineamientoEra`           |
-| GET    | `/diputados/:id/votos` | `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize` (≤100)                                                                | Desde `v_votos`, por `persona_id`                                                                                                               |
-| GET    | `/bloques`             |                                                                                                                              | `[{ nombre, bancas }]`                                                                                                                          |
-| GET    | `/distritos`           |                                                                                                                              | `[{ nombre, bancas }]`                                                                                                                          |
-| GET    | `/votaciones`          | `q`, `desde`, `hasta` (AAAA-MM-DD), `anio`, `resultado`, `soloGeneral`, `page`, `pageSize`                                   | Solo `camara = diputados`                                                                                                                       |
-| GET    | `/votaciones/:id`      |                                                                                                                              | `conteo`, `porcentajes`, `posturas`, `ley`, `votacionesDeLaLey[]`, `porBloque[]`, `votos[]` (con `fotoUrl`, `diputadoId` si sigue en funciones) |
-| GET    | `/stats/resumen`       |                                                                                                                              | `camara`, `composicion[]`, `votaciones` (totales + `ultimas[]`), `fuente`                                                                       |
-| POST   | `/poroteos`            | `titulo`, `descripcion?`, `textoProyecto?`, `tipoMayoria?`, `autor?` + `archivo` (PDF, multipart)                            | 201 + `Location`                                                                                                                                |
-| GET    | `/poroteos`            | `q`, `page`, `pageSize`                                                                                                      | Cada item trae `resumen` (resultado calculado)                                                                                                  |
-| GET    | `/poroteos/:id`        |                                                                                                                              | `votos[]` + `resumen`                                                                                                                           |
-| PATCH  | `/poroteos/:id`        | cualquier subset de `titulo`, `descripcion`, `textoProyecto`, `tipoMayoria`, `estado`, `autor`                               |                                                                                                                                                 |
-| PUT    | `/poroteos/:id/votos`  | `{ modo: 'merge'\|'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                 | Valida que los diputados existan                                                                                                                |
-| DELETE | `/poroteos/:id`        |                                                                                                                              | 204                                                                                                                                             |
+| Método | Ruta                    | Query / Body                                                                                                                 | Notas                                                                                                                                           |
+| ------ | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`               |                                                                                                                              |                                                                                                                                                 |
+| GET    | `/diputados`            | `q`, `bloque`, `distrito`, `orden` (`apellido`\|`bloque`\|`distrito`\|`presentismo`), `page`, `pageSize` (≤300, default 300) | Filtra en memoria sobre la caché                                                                                                                |
+| GET    | `/diputados/:id`        |                                                                                                                              | `mandatos[]`, `estadisticas` (`total`, `conteo`, `porcentaje`, `alineacionBloque`, `porAnio`), `alineamientoAnual`, `alineamientoEra`           |
+| GET    | `/diputados/:id/votos`  | `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize` (≤100)                                                                | Desde `v_votos`, por `persona_id`                                                                                                               |
+| GET    | `/bloques`              |                                                                                                                              | `[{ nombre, bancas }]`                                                                                                                          |
+| GET    | `/distritos`            |                                                                                                                              | `[{ nombre, bancas }]`                                                                                                                          |
+| GET    | `/votaciones`           | `q`, `desde`, `hasta` (AAAA-MM-DD), `anio`, `resultado`, `soloGeneral`, `page`, `pageSize`                                   | Solo `camara = diputados`                                                                                                                       |
+| GET    | `/votaciones/:id`       |                                                                                                                              | `conteo`, `porcentajes`, `posturas`, `ley`, `votacionesDeLaLey[]`, `porBloque[]`, `votos[]` (con `fotoUrl`, `diputadoId` si sigue en funciones) |
+| GET    | `/stats/resumen`        |                                                                                                                              | `camara`, `composicion[]`, `votaciones` (totales + `ultimas[]`), `fuente`                                                                       |
+| GET    | `/auth/google`          | `redirectTo?` (origen debe estar en `CORS_ORIGINS` / `FRONTEND_URL`)                                                         | `{ data: { url } }` para redirigir el navegador. Flujo implicit: el token vuelve en el hash a `redirectTo` (def: `FRONTEND_URL/auth/callback`)  |
+| POST   | `/auth/google/id-token` | `{ idToken, nonce? }`                                                                                                        | Alternativa One Tap: crea sesión desde el id_token de Google. `{ data: { usuario, sesion } }`                                                   |
+| POST   | `/auth/refresh`         | `{ refreshToken }`                                                                                                           | `{ data: { usuario, sesion } }` con sesión nueva                                                                                                |
+| POST   | `/auth/logout`          | Header `Authorization: Bearer <token>`                                                                                       | 204. Invalida el refreshToken                                                                                                                   |
+| GET    | `/auth/me`              | Header `Authorization: Bearer <token>`                                                                                       | `{ data: { id, email, nombre, avatarUrl } }`                                                                                                    |
+| POST   | `/poroteos`             | `titulo`, `descripcion?`, `textoProyecto?`, `tipoMayoria?`, `autor?` + `archivo` (PDF, multipart)                            | 201 + `Location`. Con Bearer se guarda `user_id`/`autor` de Google; sin Bearer sigue anónimo                                                    |
+| GET    | `/poroteos`             | `q`, `page`, `pageSize`                                                                                                      | Cada item trae `resumen` (resultado calculado). Público, con o sin Bearer                                                                       |
+| GET    | `/poroteos/:id`         |                                                                                                                              | `votos[]` + `resumen`. Público                                                                                                                  |
+| PATCH  | `/poroteos/:id`         | cualquier subset de `titulo`, `descripcion`, `textoProyecto`, `tipoMayoria`, `estado`, `autor`                               | Público (login opcional)                                                                                                                        |
+| PUT    | `/poroteos/:id/votos`   | `{ modo: 'merge'\|'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                 | Valida que los diputados existan. Público (login opcional)                                                                                      |
+| DELETE | `/poroteos/:id`         |                                                                                                                              | 204. Público por ahora                                                                                                                          |
 
 ### Cálculo del resultado (`services/resultado.js`)
 
@@ -254,7 +262,7 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 1. ✅ Poroteo manual de Diputados (este prototipo).
 2. **Integración de IA:** portar `services/votePrediction.js` y `services/legislatorQuotes.js` del prototipo anterior (`leyes-ia-backend`, usa Gemini). Flujo: `texto_proyecto` → `cv_buscar_leyes` → `cv_historial_diputados` → predicción → escribir en `poroteo_votos` con `origen='ia'`, `confianza`, `justificacion`, `fuentes`. Endpoint sugerido: `POST /api/poroteos/:id/prediccion`.
 3. **Correcciones de organizaciones:** tabla con trazabilidad (quién cambió qué voto y por qué).
-4. **Autenticación** (Supabase Auth o propia) + RLS en tablas propias + `autor` real.
+4. **Autenticación con Google:** ✅ Implementada vía Supabase Auth (`/auth/google`, `/auth/me`, `/auth/refresh`, `/auth/logout`). Login opcional: los poroteos siguen públicos y con Bearer se guarda `user_id` (`20261106120000_auth_google.sql`). Pendiente: exponer solo "mis poroteos" y proteger escrituras si se decide dejar de ser anónimo.
 5. **Senado:** cargar senadores, `camara='senadores'` en poroteos (quórum 37 de 72). Generalizar `diputado_id` → `legislador_id`.
 6. **Recarga de datos:** ¿Cómo Votó? se actualiza a diario; definir proceso (cron / GitHub Action) y luego limpiar la caché.
 7. Limpieza: borrar la Edge Function `importar-fotos` (ya no se usa).

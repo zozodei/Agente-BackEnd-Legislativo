@@ -17,6 +17,13 @@ const envSchema = z.object({
         .map((origin) => origin.trim().replace(/\/$/, ''))
         .filter(Boolean),
     ),
+  // URL pública del frontend (origen, sin barra final). Por defecto el primer CORS_ORIGINS.
+  // Se usa para el retorno de Google OAuth: FRONTEND_URL/auth/callback
+  FRONTEND_URL: z
+    .string()
+    .url('FRONTEND_URL debe ser una URL válida')
+    .transform((value) => value.trim().replace(/\/$/, ''))
+    .optional(),
   SUPABASE_URL: z
     .string({ required_error: 'Falta SUPABASE_URL' })
     .url('SUPABASE_URL debe ser una URL válida'),
@@ -29,6 +36,12 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(60),
+  RATE_LIMIT_AUTH_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(15 * 60_000),
+  RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
   CACHE_DIPUTADOS_MINUTOS: z.coerce.number().nonnegative().default(10),
 });
 
@@ -44,7 +57,11 @@ function loadEnv() {
     );
     process.exit(1);
   }
-  return Object.freeze(parsed.data);
+  const data = {
+    ...parsed.data,
+    FRONTEND_URL: parsed.data.FRONTEND_URL ?? parsed.data.CORS_ORIGINS[0],
+  };
+  return Object.freeze(data);
 }
 
 export const env = loadEnv();

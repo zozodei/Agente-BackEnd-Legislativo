@@ -22,10 +22,18 @@ vi.mock('../src/services/poroteos.service.js', () => ({
   saveVotos: vi.fn(),
   deletePoroteo: vi.fn(),
 }));
+vi.mock('../src/services/auth.service.js', () => ({
+  generarUrlGoogle: vi.fn(),
+  autenticarConIdTokenGoogle: vi.fn(),
+  refrescar: vi.fn(),
+  cerrarSesion: vi.fn(),
+  verificarToken: vi.fn(),
+}));
 
 const diputados = await import('../src/services/diputados.service.js');
 const votaciones = await import('../src/services/votaciones.service.js');
 const poroteos = await import('../src/services/poroteos.service.js');
+const auth = await import('../src/services/auth.service.js');
 const { AppError } = await import('../src/utils/AppError.js');
 const { createApp } = await import('../src/app.js');
 
@@ -136,6 +144,24 @@ describe('Poroteos', () => {
     expect(poroteos.createPoroteo).toHaveBeenCalledWith(
       expect.objectContaining({ titulo: 'Ley de prueba', tipoMayoria: 'simple' }),
       undefined,
+      null,
+    );
+  });
+
+  it('POST con login adjunta el usuario de Google al poroteo', async () => {
+    const usuario = { id: 'user-1', email: 'ana@example.com', nombre: 'Ana', avatarUrl: null };
+    auth.verificarToken.mockResolvedValue(usuario);
+    poroteos.createPoroteo.mockResolvedValue({ id: UUID, titulo: 'Ley de prueba' });
+    const res = await request(app)
+      .post('/api/poroteos')
+      .set('Authorization', 'Bearer token-valido')
+      .send({ titulo: 'Ley de prueba' });
+    expect(res.status).toBe(201);
+    expect(auth.verificarToken).toHaveBeenCalledWith('token-valido');
+    expect(poroteos.createPoroteo).toHaveBeenCalledWith(
+      expect.objectContaining({ titulo: 'Ley de prueba' }),
+      undefined,
+      usuario,
     );
   });
 
@@ -193,6 +219,95 @@ describe('Poroteos', () => {
     poroteos.deletePoroteo.mockResolvedValue();
     const res = await request(app).delete(`/api/poroteos/${UUID}`);
     expect(res.status).toBe(204);
+  });
+});
+
+describe('Auth Google', () => {
+  it('GET /auth/google devuelve la URL de Google', async () => {
+    auth.generarUrlGoogle.mockResolvedValue({ url: 'https://supabase.co/auth/v1/authorize' });
+    const res = await request(app).get('/api/auth/google');
+    expect(res.status).toBe(200);
+    expect(res.body.data.url).toBe('https://supabase.co/auth/v1/authorize');
+    expect(auth.generarUrlGoogle).toHaveBeenCalledWith({});
+  });
+
+  it('GET /auth/google acepta redirectTo permitido', async () => {
+    auth.generarUrlGoogle.mockResolvedValue({ url: 'https://supabase.co/auth/v1/authorize' });
+    const res = await request(app).get(
+      '/api/auth/google?redirectTo=http://localhost:5173/auth/callback',
+    );
+    expect(res.status).toBe(200);
+    expect(auth.generarUrlGoogle).toHaveBeenCalledWith({
+      redirectTo: 'http://localhost:5173/auth/callback',
+    });
+  });
+
+  it('GET /auth/google rechaza redirectTo inválido', async () => {
+    const res = await request(app).get('/api/auth/google?redirectTo=no-es-url');
+    expect(res.status).toBe(400);
+    expect(auth.generarUrlGoogle).not.toHaveBeenCalled();
+  });
+
+  it('GET /auth/google rechaza redirectTo de origen no permitido', async () => {
+    auth.generarUrlGoogle.mockRejectedValue(AppError.badRequest('El redirectTo no está permitido'));
+    const res = await request(app).get(
+      '/api/auth/google?redirectTo=https://malicioso.example/callback',
+    );
+    expect(res.status).toBe(400);
+    expect(auth.generarUrlGoogle).toHaveBeenCalledWith({
+      redirectTo: 'https://malicioso.example/callback',
+    });
+  });
+
+  it('POST /auth/google/id-token crea la sesión', async () => {
+    auth.autenticarConIdTokenGoogle.mockResolvedValue({
+      usuario: { id: 'user-1', email: 'ana@example.com' },
+      sesion: { accessToken: 'a', refreshToken: 'r' },
+    });
+    const res = await request(app)
+      .post('/api/auth/google/id-token')
+      .send({ idToken: 'token-google' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.usuario.email).toBe('ana@example.com');
+    expect(auth.autenticarConIdTokenGoogle).toHaveBeenCalledWith({ idToken: 'token-google' });
+  });
+
+  it('POST /auth/google/id-token rechaza sin idToken', async () => {
+    const res = await request(app).post('/api/auth/google/id-token').send({});
+    expect(res.status).toBe(400);
+    expect(auth.autenticarConIdTokenGoogle).not.toHaveBeenCalled();
+  });
+
+  it('POST /auth/refresh renueva la sesión', async () => {
+    auth.refrescar.mockResolvedValue({
+      usuario: { id: 'user-1', email: 'ana@example.com' },
+      sesion: { accessToken: 'nuevo' },
+    });
+    const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'r' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.sesion.accessToken).toBe('nuevo');
+  });
+
+  it('GET /auth/me exige Bearer y devuelve el usuario', async () => {
+    auth.verificarToken.mockResolvedValue({ id: 'user-1', email: 'ana@example.com' });
+    const res = await request(app).get('/api/auth/me').set('Authorization', 'Bearer ok');
+    expect(res.status).toBe(200);
+    expect(res.body.data.email).toBe('ana@example.com');
+  });
+
+  it('GET /auth/me sin token responde 401', async () => {
+    const res = await request(app).get('/api/auth/me');
+    expect(res.status).toBe(401);
+    expect(res.body.error.message).toMatch(/iniciar sesión/);
+    expect(auth.verificarToken).not.toHaveBeenCalled();
+  });
+
+  it('POST /auth/logout responde 204 y cierra la sesión', async () => {
+    auth.verificarToken.mockResolvedValue({ id: 'user-1', email: 'ana@example.com' });
+    auth.cerrarSesion.mockResolvedValue();
+    const res = await request(app).post('/api/auth/logout').set('Authorization', 'Bearer ok');
+    expect(res.status).toBe(204);
+    expect(auth.cerrarSesion).toHaveBeenCalledWith('ok');
   });
 });
 

@@ -15,6 +15,21 @@ export const apiLimiter = rateLimit({
   handler,
 });
 
+/** Límite estricto para auth (frena intentos automatizados del flujo de Google). */
+export const authLimiter = rateLimit({
+  windowMs: env.RATE_LIMIT_AUTH_WINDOW_MS,
+  limit: env.RATE_LIMIT_AUTH_MAX,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: (_req, res) =>
+    res.status(429).json({
+      error: {
+        code: 'RATE_LIMITED',
+        message: 'Demasiados intentos. Esperá unos minutos y probá de nuevo.',
+      },
+    }),
+});
+
 /** Límite más estricto para escrituras (POST / PUT / DELETE). */
 export const writeLimiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
