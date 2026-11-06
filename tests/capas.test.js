@@ -6,17 +6,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/config/supabase.js', () => ({
   supabase: { from: vi.fn(), rpc: vi.fn() },
   supabaseAdmin: { from: vi.fn() },
+  createAuthClient: vi.fn(),
 }));
 vi.mock('../src/services/pdf.service.js', () => ({ extractPdfText: vi.fn() }));
+// La verificación del token se dobla: /poroteos exige sesión.
+vi.mock('../src/services/auth.service.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  verificarToken: vi.fn(),
+}));
 
 const { supabase, supabaseAdmin } = await import('../src/config/supabase.js');
 const { clearDiputadosCache } = await import('../src/services/diputados.service.js');
 const { extractPdfText } = await import('../src/services/pdf.service.js');
+const { verificarToken } = await import('../src/services/auth.service.js');
 const { createApp } = await import('../src/app.js');
 const { fetchVotos } = await import('../src/repositories/poroteos.repository.js');
 const { fetchVotosVotacion } = await import('../src/repositories/votaciones.repository.js');
 
 const app = createApp();
+const USUARIO = {
+  id: '0b5d7c1e-2f3a-4b5c-8d9e-0123456789ab',
+  email: 'ana@example.org',
+  nombre: 'Ana Test',
+};
+const BEARER = 'Bearer token-valido';
 const UUID = '6f1c2a4e-1b2c-4d3e-8f90-123456789abc';
 const path = `/api/poroteos/${UUID}`;
 const poroteo = {
@@ -101,6 +114,7 @@ function detail(votos = [voto]) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  verificarToken.mockResolvedValue(USUARIO);
   clearDiputadosCache();
   supabase.from.mockImplementation(() => {
     throw new Error('Consulta de lectura inesperada');
@@ -111,9 +125,23 @@ beforeEach(() => {
 });
 
 describe('Poroteos a través de todas las capas', () => {
+  it('sin token responde 401 y no consulta la base', async () => {
+    const res = await request(app).get(path);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(supabaseAdmin.from).not.toHaveBeenCalled();
+  });
+
+  it('filtra el detalle por el usuario de la sesión (uno ajeno da 404)', async () => {
+    const consulta = enqueue(supabaseAdmin, 'poroteos', null);
+    const res = await request(app).get(path).set('Authorization', BEARER);
+    expect(res.status).toBe(404);
+    expect(consulta.eq).toHaveBeenCalledWith('user_id', USUARIO.id);
+  });
+
   it('mantiene detalle camelCase y resultado calculado', async () => {
     detail([{ ...voto, confianza: '0.750' }]);
-    const res = await request(app).get(path);
+    const res = await request(app).get(path).set('Authorization', BEARER);
     expect(res.status).toBe(200);
     expect(res.body.data).toEqual({
       id: UUID,
@@ -174,6 +202,7 @@ describe('Poroteos a través de todas las capas', () => {
       detail();
       const res = await request(app)
         .put(`${path}/votos`)
+        .set('Authorization', BEARER)
         .send({ modo, votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
       expect(res.status).toBe(200);
       expect(res.body.data.votos[0].diputadoId).toBe(1);
@@ -212,6 +241,7 @@ describe('Poroteos a través de todas las capas', () => {
       enqueue(supabase, 'v_diputados_actuales', [diputado]);
       const res = await request(app)
         .put(`${path}/votos`)
+        .set('Authorization', BEARER)
         .send({ modo, votos: [{ diputadoId: 99, voto: 'NEGATIVO' }] });
       expect(res.status).toBe(400);
       expect(res.body).toEqual({
@@ -234,7 +264,10 @@ describe('Poroteos a través de todas las capas', () => {
     enqueue(supabaseAdmin, 'poroteo_votos', []);
     const touch = enqueue(supabaseAdmin, 'poroteos', null);
     detail([]);
-    const res = await request(app).put(`${path}/votos`).send({ modo: 'replace', votos: [] });
+    const res = await request(app)
+      .put(`${path}/votos`)
+      .set('Authorization', BEARER)
+      .send({ modo: 'replace', votos: [] });
     expect(res.status).toBe(200);
     expect(borrado.delete).toHaveBeenCalledOnce();
     expect(touch.update).toHaveBeenCalledWith({ origen: 'manual' });
@@ -251,6 +284,7 @@ describe('Poroteos a través de todas las capas', () => {
     });
     const res = await request(app)
       .put(`${path}/votos`)
+      .set('Authorization', BEARER)
       .send({ modo: 'replace', votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
     expect(borrado.delete).toHaveBeenCalledOnce();
     expect(res.status).toBe(502);
@@ -266,7 +300,10 @@ describe('Poroteos a través de todas las capas', () => {
 
   it('poroteo inexistente no consulta diputados ni modifica votos', async () => {
     enqueue(supabaseAdmin, 'poroteos', null);
-    const res = await request(app).put(`${path}/votos`).send({ votos: [] });
+    const res = await request(app)
+      .put(`${path}/votos`)
+      .set('Authorization', BEARER)
+      .send({ votos: [] });
     expect(res.status).toBe(404);
     expect(res.body.error.message).toBe(`No existe el poroteo ${UUID}`);
     expect(supabase.from).not.toHaveBeenCalled();
@@ -279,6 +316,7 @@ describe('Poroteos a través de todas las capas', () => {
     detail([]);
     const res = await request(app)
       .post('/api/poroteos')
+      .set('Authorization', BEARER)
       .field('titulo', 'Ley de prueba')
       .field('textoProyecto', 'Texto pegado')
       .attach('archivo', Buffer.from('%PDF-prueba'), {
@@ -294,7 +332,8 @@ describe('Poroteos a través de todas las capas', () => {
       texto_proyecto: 'Texto pegado\n\nTexto extraído',
       archivo_nombre: 'proyecto.pdf',
       tipo_mayoria: 'simple',
-      autor: null,
+      autor: 'Ana Test',
+      user_id: USUARIO.id,
       camara: 'diputados',
       origen: 'manual',
     });
@@ -303,6 +342,7 @@ describe('Poroteos a través de todas las capas', () => {
   it('mantiene el límite de PDF de 10 MB', async () => {
     const res = await request(app)
       .post('/api/poroteos')
+      .set('Authorization', BEARER)
       .field('titulo', 'Ley de prueba')
       .attach('archivo', Buffer.alloc(10 * 1024 * 1024 + 1), {
         filename: 'grande.pdf',
@@ -319,6 +359,7 @@ describe('Poroteos a través de todas las capas', () => {
     detail([]);
     const res = await request(app)
       .patch(path)
+      .set('Authorization', BEARER)
       .send({ textoProyecto: 'Nuevo', tipoMayoria: 'absoluta', descripcion: null });
     expect(res.status).toBe(200);
     expect(patch.update).toHaveBeenCalledWith({
@@ -327,7 +368,7 @@ describe('Poroteos a través de todas las capas', () => {
       descripcion: null,
     });
     enqueue(supabaseAdmin, 'poroteos', [{ id: UUID }]);
-    const removed = await request(app).delete(path);
+    const removed = await request(app).delete(path).set('Authorization', BEARER);
     expect(removed.status).toBe(204);
     expect(removed.text).toBe('');
   });
@@ -337,10 +378,12 @@ describe('Poroteos a través de todas las capas', () => {
     enqueue(supabaseAdmin, 'poroteo_votos', [voto]);
     const res = await request(app)
       .get('/api/poroteos')
+      .set('Authorization', BEARER)
       .query({ q: 'Ley%_', page: 2, pageSize: 20 });
     expect(res.status).toBe(200);
     expect(res.body.meta).toEqual({ page: 2, pageSize: 20, total: 21, totalPages: 2 });
     expect(res.body.data[0].resumen.conteo.AFIRMATIVO).toBe(1);
+    expect(listado.eq).toHaveBeenCalledWith('user_id', USUARIO.id);
     expect(listado.ilike).toHaveBeenCalledWith('titulo', '%Ley\\%\\_%');
     expect(listado.range).toHaveBeenCalledWith(20, 39);
   });
@@ -369,7 +412,7 @@ describe('Consultas completas y traducción de errores', () => {
     ['42501', 502, 'UPSTREAM_ERROR'],
   ])('%s llega al HTTP como %s', async (code, status, apiCode) => {
     enqueue(supabaseAdmin, 'poroteos', null, { error: { code, message: 'Detalle privado' } });
-    const res = await request(app).get(path);
+    const res = await request(app).get(path).set('Authorization', BEARER);
     expect(res.status).toBe(status);
     expect(res.body.error.code).toBe(apiCode);
     expect(res.body.error.details).toEqual({ contexto: 'poroteos.get' });

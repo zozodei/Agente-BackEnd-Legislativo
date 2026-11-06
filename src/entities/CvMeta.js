@@ -1,6 +1,6 @@
 class CvMeta {
-    clave;
-    valor;
+  clave;
+  valor;
 }
 
 export default CvMeta;

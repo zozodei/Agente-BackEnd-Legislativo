@@ -35,6 +35,7 @@ function toVotoDTO(row) {
 }
 
 export async function createPoroteo(
+  usuario,
   { titulo, descripcion, textoProyecto, tipoMayoria, autor },
   archivo,
 ) {
@@ -50,15 +51,16 @@ export async function createPoroteo(
     texto_proyecto: texto,
     archivo_nombre: archivo?.originalname ?? null,
     tipo_mayoria: tipoMayoria,
-    autor: autor ?? null,
+    autor: autor ?? usuario.nombre ?? null,
+    user_id: usuario.id,
     camara: 'diputados',
     origen: 'manual',
   });
-  return getPoroteo(data.id);
+  return getPoroteo(usuario.id, data.id);
 }
 
-export async function listPoroteos({ q, page, pageSize }) {
-  const { data, count } = await poroteosRepository.fetchPoroteos({ q, page, pageSize });
+export async function listPoroteos(userId, { q, page, pageSize }) {
+  const { data, count } = await poroteosRepository.fetchPoroteos(userId, { q, page, pageSize });
 
   const votos = await poroteosRepository.fetchVotos(data.map((p) => p.id));
   const votosPorPoroteo = new Map();
@@ -76,8 +78,8 @@ export async function listPoroteos({ q, page, pageSize }) {
   );
 }
 
-export async function getPoroteo(id) {
-  const row = await poroteosRepository.fetchPoroteo(id);
+export async function getPoroteo(userId, id) {
+  const row = await poroteosRepository.fetchPoroteo(userId, id);
   if (!row) throw AppError.notFound(`No existe el poroteo ${id}`);
 
   const votos = (await poroteosRepository.fetchVotos([id])).map(toVotoDTO);
@@ -92,7 +94,7 @@ export async function getPoroteo(id) {
   };
 }
 
-export async function updatePoroteo(id, changes) {
+export async function updatePoroteo(userId, id, changes) {
   const patch = {};
   if (changes.titulo !== undefined) patch.titulo = changes.titulo;
   if (changes.descripcion !== undefined) patch.descripcion = changes.descripcion;
@@ -101,9 +103,9 @@ export async function updatePoroteo(id, changes) {
   if (changes.estado !== undefined) patch.estado = changes.estado;
   if (changes.autor !== undefined) patch.autor = changes.autor;
 
-  const data = await poroteosRepository.updatePoroteo(id, patch);
+  const data = await poroteosRepository.updatePoroteo(userId, id, patch);
   if (!data.length) throw AppError.notFound(`No existe el poroteo ${id}`);
-  return getPoroteo(id);
+  return getPoroteo(userId, id);
 }
 
 /**
@@ -111,8 +113,8 @@ export async function updatePoroteo(id, changes) {
  * - merge:   upsert de los diputados enviados.
  * - replace: borra todo y guarda solo los enviados.
  */
-export async function saveVotos(id, { modo, votos }) {
-  const existe = await poroteosRepository.fetchPoroteoId(id);
+export async function saveVotos(userId, id, { modo, votos }) {
+  const existe = await poroteosRepository.fetchPoroteoId(userId, id);
   if (!existe) throw AppError.notFound(`No existe el poroteo ${id}`);
 
   const diputados = await getDiputadosById();
@@ -143,12 +145,12 @@ export async function saveVotos(id, { modo, votos }) {
   // Toca updated_at del poroteo y recalcula su origen (manual / ia / mixto).
   const origenes = new Set((await poroteosRepository.fetchVotos([id])).map((v) => v.origen));
   const origen = origenes.has('ia') ? (origenes.has('manual') ? 'mixto' : 'ia') : 'manual';
-  await poroteosRepository.touchPoroteo(id, origen);
+  await poroteosRepository.touchPoroteo(userId, id, origen);
 
-  return getPoroteo(id);
+  return getPoroteo(userId, id);
 }
 
-export async function deletePoroteo(id) {
-  const data = await poroteosRepository.deletePoroteo(id);
+export async function deletePoroteo(userId, id) {
+  const data = await poroteosRepository.deletePoroteo(userId, id);
   if (!data.length) throw AppError.notFound(`No existe el poroteo ${id}`);
 }

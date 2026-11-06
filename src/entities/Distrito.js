@@ -1,6 +1,6 @@
 class Distrito {
-    id;
-    nombre;
+  id;
+  nombre;
 }
 
 export default Distrito;

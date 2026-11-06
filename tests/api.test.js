@@ -22,17 +22,38 @@ vi.mock('../src/services/poroteos.service.js', () => ({
   saveVotos: vi.fn(),
   deletePoroteo: vi.fn(),
 }));
+vi.mock('../src/services/auth.service.js', () => ({
+  registrar: vi.fn(),
+  login: vi.fn(),
+  refrescar: vi.fn(),
+  logout: vi.fn(),
+  verificarToken: vi.fn(),
+}));
 
 const diputados = await import('../src/services/diputados.service.js');
 const votaciones = await import('../src/services/votaciones.service.js');
 const poroteos = await import('../src/services/poroteos.service.js');
+const auth = await import('../src/services/auth.service.js');
 const { AppError } = await import('../src/utils/AppError.js');
 const { createApp } = await import('../src/app.js');
 
 const app = createApp();
 const UUID = '6f1c2a4e-1b2c-4d3e-8f90-123456789abc';
+const USUARIO = {
+  id: '11111111-2222-4333-8444-555555555555',
+  email: 'ana@test.com',
+  nombre: 'Ana',
+};
+const TOKEN = 'token-valido';
+const BEARER = `Bearer ${TOKEN}`;
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  auth.verificarToken.mockImplementation(async (token) => {
+    if (token === TOKEN) return USUARIO;
+    throw AppError.unauthorized('La sesión es inválida o venció', 'SESSION_EXPIRED');
+  });
+});
 
 describe('GET /api/health', () => {
   it('responde ok', async () => {
@@ -128,39 +149,91 @@ describe('GET /api/votaciones', () => {
 });
 
 describe('Poroteos', () => {
+  it('sin token → 401 y no llama al service', async () => {
+    const res = await request(app).get('/api/poroteos');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(poroteos.listPoroteos).not.toHaveBeenCalled();
+  });
+
+  it('con token inválido → 401', async () => {
+    const res = await request(app).get('/api/poroteos').set('Authorization', 'Bearer trucho');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('SESSION_EXPIRED');
+  });
+
+  it('sin token no procesa el PDF ni crea nada', async () => {
+    const res = await request(app)
+      .post('/api/poroteos')
+      .field('titulo', 'Ley de prueba')
+      .attach('archivo', Buffer.from('%PDF-1.4'), {
+        filename: 'a.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(res.status).toBe(401);
+    expect(poroteos.createPoroteo).not.toHaveBeenCalled();
+  });
+
   it('POST crea un poroteo (JSON)', async () => {
     poroteos.createPoroteo.mockResolvedValue({ id: UUID, titulo: 'Ley de prueba' });
-    const res = await request(app).post('/api/poroteos').send({ titulo: 'Ley de prueba' });
+    const res = await request(app)
+      .post('/api/poroteos')
+      .set('Authorization', BEARER)
+      .send({ titulo: 'Ley de prueba' });
     expect(res.status).toBe(201);
     expect(res.headers.location).toBe(`/api/poroteos/${UUID}`);
     expect(poroteos.createPoroteo).toHaveBeenCalledWith(
+      USUARIO,
       expect.objectContaining({ titulo: 'Ley de prueba', tipoMayoria: 'simple' }),
       undefined,
     );
   });
 
   it('POST rechaza títulos cortos', async () => {
-    const res = await request(app).post('/api/poroteos').send({ titulo: 'x' });
+    const res = await request(app)
+      .post('/api/poroteos')
+      .set('Authorization', BEARER)
+      .send({ titulo: 'x' });
     expect(res.status).toBe(400);
   });
 
   it('POST rechaza archivos que no son PDF', async () => {
     const res = await request(app)
       .post('/api/poroteos')
+      .set('Authorization', BEARER)
       .field('titulo', 'Ley de prueba')
       .attach('archivo', Buffer.from('hola'), { filename: 'a.txt', contentType: 'text/plain' });
     expect(res.status).toBe(400);
     expect(res.body.error.message).toMatch(/PDF/);
   });
 
+  it('POST acepta un PDF enviado como octet-stream (Windows) y corrige tildes del nombre', async () => {
+    poroteos.createPoroteo.mockResolvedValue({ id: UUID, titulo: 'Ley de prueba' });
+    const res = await request(app)
+      .post('/api/poroteos')
+      .set('Authorization', BEARER)
+      .field('titulo', 'Ley de prueba')
+      .field('tipoMayoria', 'absoluta')
+      .attach('archivo', Buffer.from('%PDF-1.4 ...'), {
+        filename: 'Ley de educación.pdf',
+        contentType: 'application/octet-stream',
+      });
+    expect(res.status).toBe(201);
+    const [usuario, body, archivo] = poroteos.createPoroteo.mock.calls[0];
+    expect(usuario).toEqual(USUARIO);
+    expect(body).toMatchObject({ titulo: 'Ley de prueba', tipoMayoria: 'absoluta' });
+    expect(archivo.originalname).toBe('Ley de educación.pdf');
+  });
+
   it('GET /:id valida UUID', async () => {
-    const res = await request(app).get('/api/poroteos/123');
+    const res = await request(app).get('/api/poroteos/123').set('Authorization', BEARER);
     expect(res.status).toBe(400);
   });
 
   it('PUT /:id/votos valida los tipos de voto', async () => {
     const res = await request(app)
       .put(`/api/poroteos/${UUID}/votos`)
+      .set('Authorization', BEARER)
       .send({ votos: [{ diputadoId: 1, voto: 'QUIZAS' }] });
     expect(res.status).toBe(400);
   });
@@ -168,6 +241,7 @@ describe('Poroteos', () => {
   it('PUT /:id/votos rechaza diputados repetidos', async () => {
     const res = await request(app)
       .put(`/api/poroteos/${UUID}/votos`)
+      .set('Authorization', BEARER)
       .send({
         votos: [
           { diputadoId: 1, voto: 'AFIRMATIVO' },
@@ -181,18 +255,126 @@ describe('Poroteos', () => {
     poroteos.saveVotos.mockResolvedValue({ id: UUID, votos: [] });
     const res = await request(app)
       .put(`/api/poroteos/${UUID}/votos`)
+      .set('Authorization', BEARER)
       .send({ votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
     expect(res.status).toBe(200);
-    expect(poroteos.saveVotos).toHaveBeenCalledWith(UUID, {
+    expect(poroteos.saveVotos).toHaveBeenCalledWith(USUARIO.id, UUID, {
       modo: 'merge',
       votos: [{ diputadoId: 1, voto: 'AFIRMATIVO', origen: 'manual' }],
     });
   });
 
+  it('GET lista solo los poroteos del usuario logueado', async () => {
+    poroteos.listPoroteos.mockResolvedValue({ data: [], meta: { total: 0 } });
+    const res = await request(app).get('/api/poroteos').set('Authorization', BEARER);
+    expect(res.status).toBe(200);
+    expect(poroteos.listPoroteos).toHaveBeenCalledWith(
+      USUARIO.id,
+      expect.objectContaining({ page: 1, pageSize: 20 }),
+    );
+  });
+
+  it('GET /:id de otro usuario → 404', async () => {
+    poroteos.getPoroteo.mockRejectedValue(AppError.notFound(`No existe el poroteo ${UUID}`));
+    const res = await request(app).get(`/api/poroteos/${UUID}`).set('Authorization', BEARER);
+    expect(res.status).toBe(404);
+    expect(poroteos.getPoroteo).toHaveBeenCalledWith(USUARIO.id, UUID);
+  });
+
   it('DELETE responde 204', async () => {
     poroteos.deletePoroteo.mockResolvedValue();
-    const res = await request(app).delete(`/api/poroteos/${UUID}`);
+    const res = await request(app).delete(`/api/poroteos/${UUID}`).set('Authorization', BEARER);
     expect(res.status).toBe(204);
+  });
+});
+
+describe('Auth', () => {
+  const SESION = {
+    accessToken: 'a',
+    refreshToken: 'r',
+    expiresIn: 3600,
+    expiresAt: 1,
+    tokenType: 'bearer',
+  };
+
+  it('POST /auth/registro crea la cuenta (email normalizado)', async () => {
+    auth.registrar.mockResolvedValue({
+      usuario: USUARIO,
+      sesion: SESION,
+      requiereConfirmacion: false,
+    });
+    const res = await request(app)
+      .post('/api/auth/registro')
+      .send({ email: '  Ana@Test.com ', password: 'secreta123', nombre: 'Ana' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.sesion.accessToken).toBe('a');
+    expect(auth.registrar).toHaveBeenCalledWith({
+      email: 'ana@test.com',
+      password: 'secreta123',
+      nombre: 'Ana',
+    });
+  });
+
+  it('POST /auth/registro rechaza contraseñas cortas y emails inválidos', async () => {
+    const res = await request(app)
+      .post('/api/auth/registro')
+      .send({ email: 'no-es-email', password: '123', nombre: 'Ana' });
+    expect(res.status).toBe(400);
+    const campos = res.body.error.details.map((d) => d.campo);
+    expect(campos).toEqual(expect.arrayContaining(['body.email', 'body.password']));
+    expect(auth.registrar).not.toHaveBeenCalled();
+  });
+
+  it('POST /auth/registro con email repetido → 409', async () => {
+    auth.registrar.mockRejectedValue(AppError.conflict('Ya existe una cuenta con ese email'));
+    const res = await request(app)
+      .post('/api/auth/registro')
+      .send({ email: 'ana@test.com', password: 'secreta123', nombre: 'Ana' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+  });
+
+  it('POST /auth/login devuelve la sesión', async () => {
+    auth.login.mockResolvedValue({ usuario: USUARIO, sesion: SESION });
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'ana@test.com', password: 'secreta123' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.usuario.email).toBe('ana@test.com');
+  });
+
+  it('POST /auth/login con credenciales incorrectas → 401', async () => {
+    auth.login.mockRejectedValue(
+      AppError.unauthorized('Email o contraseña incorrectos', 'INVALID_CREDENTIALS'),
+    );
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'ana@test.com', password: 'mala' });
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('POST /auth/refresh exige refreshToken', async () => {
+    const res = await request(app).post('/api/auth/refresh').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /auth/me devuelve el usuario del token', async () => {
+    const res = await request(app).get('/api/auth/me').set('Authorization', BEARER);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual(USUARIO);
+  });
+
+  it('GET /auth/me sin token → 401', async () => {
+    const res = await request(app).get('/api/auth/me');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /auth/logout responde 204', async () => {
+    auth.logout.mockResolvedValue();
+    const res = await request(app).post('/api/auth/logout').set('Authorization', BEARER);
+    expect(res.status).toBe(204);
+    expect(auth.logout).toHaveBeenCalledWith(TOKEN);
   });
 });
 
@@ -205,9 +387,9 @@ describe('Errores', () => {
 
   it('JSON malformado → 400', async () => {
     const res = await request(app)
-      .post('/api/poroteos')
+      .post('/api/auth/login')
       .set('Content-Type', 'application/json')
-      .send('{"titulo":');
+      .send('{"email":');
     expect(res.status).toBe(400);
   });
 

@@ -26,7 +26,7 @@ Flujo: **Ruta → Controller → Service → Repository → Supabase**. Los serv
 src/
   config/
     env.js          valida process.env con zod; si falta algo, process.exit(1) diciendo qué
-    supabase.js     `supabase` (clave pública, lectura) y `supabaseAdmin` (clave secreta)
+    supabase.js     `supabase` (clave pública, lectura), `supabaseAdmin` (clave secreta), createAuthClient()
     logger.js       pino (pretty en dev, JSON en prod, silent en test)
     constants.js    257 bancas, quórum 129, tipos de voto, fuente de datos
   routes/index.js   compone los routers por recurso y /health
@@ -37,7 +37,9 @@ src/
     catalogos.service.js   bloques y distritos (derivados de los diputados cacheados)
     votaciones.service.js  listado y detalle de votaciones
     stats.service.js       resumen del panel de inicio
-    poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados
+    auth.service.js        registro/login/refresh/logout con Supabase Auth + verificarToken()
+    poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados; recibe
+                           el usuario de la sesión (poroteos.repository SIEMPRE filtra por user_id)
     resultado.js           cálculo PURO del resultado de un poroteo (quórum, mayorías)
     pdf.service.js         extrae texto de PDFs (unpdf)
   entities/         clases simples de tablas, campos snake_case y JSDoc; sin lógica
@@ -48,8 +50,9 @@ src/
     metadata.repository.js    lectura de cv_meta con cliente público
   middlewares/
     validate.js       valida params/query/body con zod → deja el resultado en req.valid
+    auth.js           requireAuth: valida "Authorization: Bearer" → req.usuario { id, email, nombre }
     errorHandler.js   notFound + manejador central de errores
-    rateLimit.js      apiLimiter (general) y writeLimiter (POST/PUT/PATCH/DELETE)
+    rateLimit.js      apiLimiter (general), writeLimiter (POST/PUT/PATCH/DELETE), authLimiter (login/registro)
     upload.js         multer en memoria, solo PDF, 10 MB
   validators/       esquemas zod por recurso (+ common.js)
   utils/
@@ -121,7 +124,7 @@ cv_votaciones.ley_id    → cv_leyes.id
 
 Todas las vistas son `security_invoker`. Fotos: bucket público `fotos` en Storage (1.604). El front las carga directo con `foto_url`.
 
-### Tablas propias (migración `supabase/migrations/20261104120000_poroteos.sql`)
+### Tablas propias (migraciones `20261104120000_poroteos.sql` y `20261106120000_auth_usuarios.sql`)
 
 RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni escribir. Solo el backend con `supabaseAdmin`.
 
@@ -138,7 +141,8 @@ RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni 
 | `tipo_mayoria`              | text        | `simple` \| `absoluta` \| `dos_tercios`                     |
 | `estado`                    | text        | `borrador` \| `final`                                       |
 | `origen`                    | text        | `manual` \| `ia` \| `mixto` (se recalcula al guardar votos) |
-| `autor`                     | text        | libre (hasta que haya auth)                                 |
+| `autor`                     | text        | libre; si no se manda, se usa el nombre del usuario         |
+| `user_id`                   | uuid FK     | → `auth.users.id`, `on delete cascade`. Dueño del poroteo   |
 | `metadata`                  | jsonb       | libre (ej. leyes similares que use la IA)                   |
 | `created_at` / `updated_at` | timestamptz | trigger `set_updated_at`                                    |
 
@@ -155,6 +159,14 @@ RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni 
 | `fuentes`       | jsonb        | array de citas/fuentes de la IA                                         |
 | `updated_at`    | timestamptz  |                                                                         |
 
+### Usuarios (Supabase Auth)
+
+- Las cuentas viven en `auth.users` (las maneja Supabase Auth, email + contraseña). El nombre va en `raw_user_meta_data->>'nombre'`.
+- El front **no** habla con Supabase: usa `/api/auth/*` y manda `Authorization: Bearer <accessToken>`.
+- `requireAuth` verifica el token con `supabaseAdmin.auth.getClaims()` (firma + vencimiento, local con JWKS).
+- Como `supabaseAdmin` saltea RLS, **toda query a `poroteos` filtra por `user_id`**. Un poroteo ajeno responde 404.
+- Poroteos viejos con `user_id` null no los ve nadie (ver comentario al final de la migración para asignarlos).
+
 Un diputado sin fila en `poroteo_votos` = **sin asignar** (cuenta como en disputa, igual que `INDEFINIDO`).
 
 ### Cuidados con los datos
@@ -169,7 +181,7 @@ Un diputado sin fila en `poroteo_votos` = **sin asignar** (cuenta como en disput
 
 ## 4. API
 
-Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, totalPages } }`. Simples → `{ data }`. Errores → `{ error: { code, message, details? } }` con códigos `BAD_REQUEST`, `NOT_FOUND`, `RATE_LIMITED`, `CORS_FORBIDDEN`, `UPSTREAM_ERROR` (502), `SERVICE_UNAVAILABLE` (503, falta migración), `INTERNAL_ERROR`.
+Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, totalPages } }`. Simples → `{ data }`. Errores → `{ error: { code, message, details? } }` con códigos `BAD_REQUEST`, `UNAUTHORIZED` (401, falta token), `SESSION_EXPIRED` (401, token vencido/inválido), `INVALID_CREDENTIALS` (401), `EMAIL_NOT_CONFIRMED` (403), `FORBIDDEN` (403), `CONFLICT` (409, email ya registrado), `NOT_FOUND`, `RATE_LIMITED`, `CORS_FORBIDDEN`, `UPSTREAM_ERROR` (502), `SERVICE_UNAVAILABLE` (503, falta migración), `INTERNAL_ERROR`.
 
 | Método | Ruta                   | Query / Body                                                                                                                 | Notas                                                                                                                                           |
 | ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -182,12 +194,19 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 | GET    | `/votaciones`          | `q`, `desde`, `hasta` (AAAA-MM-DD), `anio`, `resultado`, `soloGeneral`, `page`, `pageSize`                                   | Solo `camara = diputados`                                                                                                                       |
 | GET    | `/votaciones/:id`      |                                                                                                                              | `conteo`, `porcentajes`, `posturas`, `ley`, `votacionesDeLaLey[]`, `porBloque[]`, `votos[]` (con `fotoUrl`, `diputadoId` si sigue en funciones) |
 | GET    | `/stats/resumen`       |                                                                                                                              | `camara`, `composicion[]`, `votaciones` (totales + `ultimas[]`), `fuente`                                                                       |
+| POST   | `/auth/registro`       | `email`, `password` (8–72), `nombre`                                                                                         | 201 `{ usuario, sesion \| null, requiereConfirmacion }`                                                                                         |
+| POST   | `/auth/login`          | `email`, `password`                                                                                                          | `{ usuario, sesion: { accessToken, refreshToken, expiresIn, expiresAt, tokenType } }`                                                           |
+| POST   | `/auth/refresh`        | `refreshToken`                                                                                                               | Igual que login. El refreshToken viejo deja de servir                                                                                           |
+| POST   | `/auth/logout`         | 🔒                                                                                                                           | 204                                                                                                                                             |
+| GET    | `/auth/me`             | 🔒                                                                                                                           | `{ id, email, nombre }`                                                                                                                         |
 | POST   | `/poroteos`            | `titulo`, `descripcion?`, `textoProyecto?`, `tipoMayoria?`, `autor?` + `archivo` (PDF, multipart)                            | 201 + `Location`                                                                                                                                |
 | GET    | `/poroteos`            | `q`, `page`, `pageSize`                                                                                                      | Cada item trae `resumen` (resultado calculado)                                                                                                  |
 | GET    | `/poroteos/:id`        |                                                                                                                              | `votos[]` + `resumen`                                                                                                                           |
 | PATCH  | `/poroteos/:id`        | cualquier subset de `titulo`, `descripcion`, `textoProyecto`, `tipoMayoria`, `estado`, `autor`                               |                                                                                                                                                 |
 | PUT    | `/poroteos/:id/votos`  | `{ modo: 'merge'\|'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                 | Valida que los diputados existan                                                                                                                |
 | DELETE | `/poroteos/:id`        |                                                                                                                              | 204                                                                                                                                             |
+
+🔒 = requiere `Authorization: Bearer <accessToken>`. **Todos los `/poroteos` son 🔒** y solo operan sobre los poroteos del usuario del token.
 
 ### Cálculo del resultado (`services/resultado.js`)
 
@@ -201,6 +220,7 @@ Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, 
 
 - **Nunca** commitear `.env` ni claves. Solo `.env.example` sin valores reales.
 - La clave secreta (`SUPABASE_SECRET_KEY`) vive **solo** acá. Nunca en el front, logs, respuestas ni issues.
+- Endpoints con datos de un usuario → `requireAuth` en `*.routes.js` + pasar `req.usuario.id` al service y filtrar por `user_id` en el repository.
 - `supabaseAdmin` solo en repositories de tablas propias. Para datos de ¿Cómo Votó? usar `supabase` (pública).
 - Toda entrada (params, query, body) pasa por `validate()` con zod. No leer `req.query` / `req.body` crudos en controllers: usar `req.valid.*`.
 - Texto de búsqueda que va a `.or()` / `.ilike()` pasa por `sanitizeSearch()`.
@@ -234,7 +254,11 @@ npm run lint
 npm run format
 ```
 
-Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NODE_OPTIONS=--use-system-ca` al `.env`.
+Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NODE_OPTIONS=--use-system-ca` al `.env`. Síntoma: todas las rutas devuelven `UPSTREAM_ERROR` y el log dice `fetch failed … self-signed certificate`.
+
+**Base nueva o recién clonada:** las tablas propias NO se crean solas. Si `/api/poroteos` responde `SERVICE_UNAVAILABLE` ("Falta una tabla o función…"), pegá cada archivo de `supabase/migrations/` en el SQL Editor de Supabase, en orden. Sin eso no se puede crear un poroteo y "Votó con su bloque" sale vacío.
+
+PDFs: se aceptan por MIME (`application/pdf`) o, si el navegador manda `application/octet-stream`/vacío (pasa en Windows), por extensión `.pdf`. El contenido se valida por la firma `%PDF-`.
 
 ### Agregar un endpoint (checklist)
 
@@ -254,7 +278,7 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 1. ✅ Poroteo manual de Diputados (este prototipo).
 2. **Integración de IA:** portar `services/votePrediction.js` y `services/legislatorQuotes.js` del prototipo anterior (`leyes-ia-backend`, usa Gemini). Flujo: `texto_proyecto` → `cv_buscar_leyes` → `cv_historial_diputados` → predicción → escribir en `poroteo_votos` con `origen='ia'`, `confianza`, `justificacion`, `fuentes`. Endpoint sugerido: `POST /api/poroteos/:id/prediccion`.
 3. **Correcciones de organizaciones:** tabla con trazabilidad (quién cambió qué voto y por qué).
-4. **Autenticación** (Supabase Auth o propia) + RLS en tablas propias + `autor` real.
+4. ✅ **Autenticación** con Supabase Auth: cada usuario tiene sus poroteos. Pendiente: recuperar contraseña, roles (organizaciones / admin), poroteos compartidos.
 5. **Senado:** cargar senadores, `camara='senadores'` en poroteos (quórum 37 de 72). Generalizar `diputado_id` → `legislador_id`.
 6. **Recarga de datos:** ¿Cómo Votó? se actualiza a diario; definir proceso (cron / GitHub Action) y luego limpiar la caché.
 7. Limpieza: borrar la Edge Function `importar-fotos` (ya no se usa).

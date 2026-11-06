@@ -34,19 +34,21 @@ Si no se aplicaron, los endpoints de `/api/poroteos` responden `503 SERVICE_UNAV
 
 ## Variables de entorno
 
-| Variable                   | Obligatoria | Descripción                                                     |
-| -------------------------- | :---------: | --------------------------------------------------------------- |
-| `NODE_ENV`                 |             | `development` \| `production` \| `test` (default `development`) |
-| `PORT`                     |             | Puerto HTTP (default `4000`)                                    |
-| `LOG_LEVEL`                |             | Nivel de pino (default `info`)                                  |
-| `CORS_ORIGINS`             |     ✅      | Orígenes permitidos, separados por coma                         |
-| `SUPABASE_URL`             |     ✅      | URL del proyecto Supabase                                       |
-| `SUPABASE_PUBLISHABLE_KEY` |     ✅      | Clave pública (lectura)                                         |
-| `SUPABASE_SECRET_KEY`      |     ✅      | Clave secreta (escritura de poroteos). **Nunca** en el front    |
-| `RATE_LIMIT_WINDOW_MS`     |             | Ventana del rate limit en ms (default `60000`)                  |
-| `RATE_LIMIT_MAX`           |             | Requests por ventana por IP (default `300`)                     |
-| `RATE_LIMIT_WRITE_MAX`     |             | Escrituras por ventana por IP (default `60`)                    |
-| `CACHE_DIPUTADOS_MINUTOS`  |             | Caché en memoria de los 257 diputados (default `10`)            |
+| Variable                    | Obligatoria | Descripción                                                     |
+| --------------------------- | :---------: | --------------------------------------------------------------- |
+| `NODE_ENV`                  |             | `development` \| `production` \| `test` (default `development`) |
+| `PORT`                      |             | Puerto HTTP (default `4000`)                                    |
+| `LOG_LEVEL`                 |             | Nivel de pino (default `info`)                                  |
+| `CORS_ORIGINS`              |     ✅      | Orígenes permitidos, separados por coma                         |
+| `SUPABASE_URL`              |     ✅      | URL del proyecto Supabase                                       |
+| `SUPABASE_PUBLISHABLE_KEY`  |     ✅      | Clave pública (lectura)                                         |
+| `SUPABASE_SECRET_KEY`       |     ✅      | Clave secreta (escritura de poroteos). **Nunca** en el front    |
+| `RATE_LIMIT_WINDOW_MS`      |             | Ventana del rate limit en ms (default `60000`)                  |
+| `RATE_LIMIT_MAX`            |             | Requests por ventana por IP (default `300`)                     |
+| `RATE_LIMIT_WRITE_MAX`      |             | Escrituras por ventana por IP (default `60`)                    |
+| `RATE_LIMIT_AUTH_WINDOW_MS` |             | Ventana del límite de login/registro (default `900000`, 15 min) |
+| `RATE_LIMIT_AUTH_MAX`       |             | Intentos de login/registro por ventana por IP (default `20`)    |
+| `CACHE_DIPUTADOS_MINUTOS`   |             | Caché en memoria de los 257 diputados (default `10`)            |
 
 Si falta una obligatoria, el servidor no levanta e indica cuál.
 
@@ -76,12 +78,19 @@ Base: `/api`. Respuestas: `{ data }` o `{ data, meta }` si es paginada. Errores:
 | `GET`    | `/votaciones`          | Listado. Query: `q`, `desde`, `hasta`, `anio`, `resultado`, `soloGeneral`…  |
 | `GET`    | `/votaciones/:id`      | Detalle con conteo, porcentajes, voto de cada diputado y resumen por bloque |
 | `GET`    | `/stats/resumen`       | Números generales para el panel de inicio                                   |
+| `POST`   | `/auth/registro`       | Crear cuenta (`email`, `password`, `nombre`)                                |
+| `POST`   | `/auth/login`          | Iniciar sesión → `accessToken` + `refreshToken`                             |
+| `POST`   | `/auth/refresh`        | Renovar la sesión con el `refreshToken`                                     |
+| `POST`   | `/auth/logout`         | Cerrar sesión 🔒                                                            |
+| `GET`    | `/auth/me`             | Usuario logueado 🔒                                                         |
 | `POST`   | `/poroteos`            | Crear (JSON o `multipart/form-data` con `archivo` PDF opcional)             |
 | `GET`    | `/poroteos`            | Listado con resumen del resultado                                           |
 | `GET`    | `/poroteos/:id`        | Detalle con votos y resultado calculado                                     |
 | `PATCH`  | `/poroteos/:id`        | Editar título, descripción, tipo de mayoría, estado                         |
 | `PUT`    | `/poroteos/:id/votos`  | Guardar votos estimados (`modo: merge \| replace`)                          |
 | `DELETE` | `/poroteos/:id`        | Borrar                                                                      |
+
+🔒 = requiere `Authorization: Bearer <accessToken>`. **Todos los `/poroteos` son 🔒** y cada usuario ve solo los suyos.
 
 Más detalle (formatos, reglas de cálculo, esquema) en [`CLAUDE.md`](CLAUDE.md).
 
@@ -93,9 +102,10 @@ src/
   routes/        index.js compone routers; *.routes.js define endpoints y middlewares
   controllers/   req.valid → service → respuesta HTTP (status, headers y JSON)
   services/      reglas, DTOs camelCase, caché y coordinación; sin SDK de Supabase
+                 (excepción: auth.service.js habla con Supabase Auth)
   entities/      clases de tablas con campos públicos snake_case y JSDoc; sin lógica
   repositories/  consultas a tablas, vistas y RPC; devuelven filas de la base
-  middlewares/   validación, errores, rate limit, upload
+  middlewares/   validación, auth (token), errores, rate limit, upload
   validators/    esquemas zod
   utils/         helpers (errores, paginación, caché, Supabase)
   app.js         arma la app Express

@@ -1,6 +1,6 @@
 class Bloque {
-    id;
-    nombre;
+  id;
+  nombre;
 }
 
 export default Bloque;

@@ -53,7 +53,9 @@ src/
     catalogos.service.js   bloques y distritos (derivados de los diputados cacheados)
     votaciones.service.js  listado y detalle de votaciones
     stats.service.js       resumen del panel de inicio
-    poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados
+    auth.service.js        cuentas con Supabase Auth (registro, login, refresh, logout, verificarToken)
+    poroteos.service.js    coordina CRUD, valida diputados y calcula origen/resultados; recibe el
+                           usuario de la sesión (el repository SIEMPRE filtra por user_id)
     resultado.js           cálculo PURO del resultado de un poroteo (quórum, mayorías)
     pdf.service.js         extrae texto de PDFs (unpdf)
   entities/         clases simples de tablas, campos snake_case y JSDoc; sin lógica
@@ -154,7 +156,8 @@ RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni 
 | `tipo_mayoria`              | text        | `simple` / `absoluta` / `dos_tercios`                     |
 | `estado`                    | text        | `borrador` / `final`                                      |
 | `origen`                    | text        | `manual` / `ia` / `mixto` (se recalcula al guardar votos) |
-| `autor`                     | text        | libre (hasta que haya auth)                               |
+| `autor`                     | text        | libre; si no se manda, el nombre del usuario              |
+| `user_id`                   | uuid        | dueño del poroteo (Supabase Auth); todo filtra por esto   |
 | `metadata`                  | jsonb       | libre (ej. leyes similares que use la IA)                 |
 | `created_at` / `updated_at` | timestamptz | trigger `set_updated_at`                                  |
 

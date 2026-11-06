@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { validate } from '../middlewares/validate.js';
 import { writeLimiter } from '../middlewares/rateLimit.js';
+import { requireAuth } from '../middlewares/auth.js';
 import { uploadPdf } from '../middlewares/upload.js';
 import * as poroteos from '../controllers/poroteos.controller.js';
 import {
@@ -13,7 +14,8 @@ import {
 
 const router = Router();
 
-router.use('/poroteos', writeLimiter);
+// Requiere sesión: cada usuario ve y edita solo sus poroteos.
+router.use('/poroteos', writeLimiter, requireAuth);
 router.post('/poroteos', uploadPdf, validate({ body: createPoroteoBody }), poroteos.create);
 router.get('/poroteos', validate({ query: listPoroteosQuery }), poroteos.list);
 router.get('/poroteos/:id', validate({ params: poroteoParams }), poroteos.get);
