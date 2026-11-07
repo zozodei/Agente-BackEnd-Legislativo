@@ -1,11 +1,10 @@
 import multer from 'multer';
 import { AppError } from '../utils/AppError.js';
-import { isProduction } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
 /** 404 para rutas que no existen. */
 export function notFound(req, _res, next) {
-  next(AppError.notFound(`No existe la ruta ${req.method} ${req.originalUrl}`));
+  next(AppError.notFound(`No existe la ruta ${req.method} ${req.path}`));
 }
 
 /**
@@ -27,11 +26,11 @@ export function errorHandler(err, req, res, _next) {
   }
 
   if (!(error instanceof AppError)) {
-    (req.log ?? logger).error({ err }, 'Error no controlado');
+    (req.log ?? logger).error({ code: 'INTERNAL_ERROR' }, 'Error no controlado');
     error = new AppError(500, 'INTERNAL_ERROR', 'Ocurrió un error inesperado');
-    if (!isProduction) error.details = { message: err?.message, stack: err?.stack };
+    // No devolver errores originales: pueden incluir credenciales aun en desarrollo.
   } else if (error.status >= 500) {
-    (req.log ?? logger).warn({ err: error }, error.message);
+    (req.log ?? logger).warn({ code: error.code, status: error.status }, 'Fallo de servicio');
   }
 
   res.status(error.status).json({

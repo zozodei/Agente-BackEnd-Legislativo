@@ -3,6 +3,7 @@ import { logger } from '../config/logger.js';
 
 const SESSION_CODES = new Set([
   'bad_jwt',
+  'invalid_jwt',
   'session_not_found',
   'session_expired',
   'refresh_token_not_found',
@@ -14,6 +15,7 @@ const SESSION_CODES = new Set([
 /** Traducción única de errores Auth. No registrar respuestas que puedan contener tokens. */
 export function unwrapAuth({ data, error }, contexto) {
   if (!error) return data;
+  if (error instanceof AppError) throw error;
   if (
     error.status === 429 ||
     ['over_request_rate_limit', 'over_email_send_rate_limit'].includes(error.code)

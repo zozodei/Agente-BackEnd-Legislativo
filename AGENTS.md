@@ -278,15 +278,16 @@ ni se crearon cuentas o enviaron correos para implementar esto.
 
 Implementados con Supabase Auth, sin tabla propia `usuarios`. Contrato y pasos
 manuales en [docs/autenticacion.md](docs/autenticacion.md). El frontend existente
-ya usa estas rutas y DTO; no requiere cambios para registro/login/refresh/me/logout.
+usa estas rutas con el modo cookie coordinado descrito en docs/seguridad.md.
 Las cuentas se administran en Auth (`auth.users`) y `nombre` es metadata de
 presentación, nunca un permiso. No crear ni modificar manualmente esa tabla.
 
 Se usa un cliente público nuevo por operación en `config/supabaseAuth.js`, sin
 persistencia ni auto-refresh, para no compartir sesiones con otras solicitudes ni
 con el cliente histórico. `auth.repository.js` concentra las llamadas al SDK y
-`authErrors.js` traduce los errores sin registrar credenciales. Tokens Bearer se
-extraen con Zod a `req.valid.auth`; `me` los verifica con `auth.getUser(token)`.
+`authErrors.js` traduce errores sin registrar credenciales. Tokens Bearer o de
+cookie se extraen con Zod a `req.valid.auth`; `me` verifica getClaims, emisor,
+audiencia y expiración y consulta `auth.getUser(token)` para la identidad actual.
 Login, registro y refresh comparten un límite de 20 intentos por IP por minuto,
 además del límite general. Respuestas `/auth/*`: `Cache-Control: no-store`.
 
@@ -433,3 +434,25 @@ Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-
 | PATCH  | /poroteos/:id/miembros/:userId | version y rol                   |
 | DELETE | /poroteos/:id/miembros/:userId | version                         |
 | POST   | /poroteos/:id/salir            | version                         |
+
+## Seguridad de sesiones (auditoría 06/11/2026)
+
+El contrato navegador coordinado prevalece sobre los ejemplos Bearer anteriores:
+X-Session-Mode: cookie + credentials include, cookies HttpOnly host-only, Secure en
+producción, SameSite configurable (lax por defecto). Refresh toma exclusivamente
+la cookie y no requiere refreshToken en body. Las respuestas de ese modo contienen
+solo vencimientos, nunca access/refresh. Bearer sigue disponible para clientes
+explícitos sin cookies. Toda mutación con cookies exige Origin exacto y encabezado
+no simple (también login y multipart); CORS solo no alcanza.
+`X-Expected-User` es una precondición UUID opcional para rechazar cambios de cuenta
+entre pestañas; no concede permisos ni sustituye al actor obtenido de getUser.
+
+Auth verifica getClaims oficial, issuer/audience/exp/sub y getUser actual; no
+decodificar para autorizar. TRUST_PROXY vacío por defecto, configurar solo IP/CIDR
+confiables. PDF: firma y parser, worker 8 s/300 páginas/500000 caracteres, máximo
+2 workers por proceso; 5 cargas/min/IP y cuenta. Lookup de participantes tiene
+10/min/IP y cuenta. No registrar query strings ni objetos crudos de error.
+
+Zod 4.6.7, fuentes usa z.record(z.string(), z.unknown()). Todas las respuestas
+API no-store. No cambiar SQL históricos. Evidencia y pendientes (incluida ausencia
+de validación remota) en [docs/seguridad.md](docs/seguridad.md).

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { verifiedClaims } from './claims.fixture.js';
 
 // Prueba todo el flujo HTTP → repository, sin llamadas al proyecto real.
 vi.mock('../src/config/supabaseAuth.js', () => ({ createAuthClient: vi.fn() }));
@@ -47,6 +48,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   ip = `192.0.2.${ipIndex++}`;
   auth = {
+    getClaims: vi.fn().mockResolvedValue(verifiedClaims(user.id)),
     signUp: vi.fn().mockResolvedValue({ data: { user, session: null }, error: null }),
     signInWithPassword: vi.fn().mockResolvedValue({ data: { user, session }, error: null }),
     refreshSession: vi.fn().mockResolvedValue({ data: { user, session }, error: null }),

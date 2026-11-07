@@ -3,7 +3,7 @@ import globals from 'globals';
 import prettier from 'eslint-config-prettier';
 
 export default [
-  { ignores: ['node_modules', 'coverage'] },
+  { ignores: ['node_modules', 'coverage', '.security-work/**'] },
   js.configs.recommended,
   {
     languageOptions: {

@@ -220,15 +220,16 @@ ni se crearon cuentas o enviaron correos para implementar esto.
 
 Implementados con Supabase Auth, sin tabla propia `usuarios`. Contrato y pasos
 manuales en [docs/autenticacion.md](docs/autenticacion.md). El frontend existente
-ya usa estas rutas y DTO; no requiere cambios para registro/login/refresh/me/logout.
+usa estas rutas con el modo cookie coordinado descrito en docs/seguridad.md.
 Las cuentas se administran en Auth (`auth.users`) y `nombre` es metadata de
 presentación, nunca un permiso. No crear ni modificar manualmente esa tabla.
 
 Se usa un cliente público nuevo por operación en `config/supabaseAuth.js`, sin
 persistencia ni auto-refresh, para no compartir sesiones con otras solicitudes ni
 con el cliente histórico. `auth.repository.js` concentra las llamadas al SDK y
-`authErrors.js` traduce los errores sin registrar credenciales. Tokens Bearer se
-extraen con Zod a `req.valid.auth`; `me` los verifica con `auth.getUser(token)`.
+`authErrors.js` traduce errores sin registrar credenciales. Tokens Bearer o de
+cookie se extraen con Zod a `req.valid.auth`; `me` verifica getClaims, emisor,
+audiencia y expiración y consulta `auth.getUser(token)` para la identidad actual.
 Login, registro y refresh comparten un límite de 20 intentos por IP por minuto,
 además del límite general. Respuestas `/auth/*`: `Cache-Control: no-store`.
 
@@ -285,3 +286,17 @@ Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-
 | PATCH  | /poroteos/:id/miembros/:userId | version y rol                   |
 | DELETE | /poroteos/:id/miembros/:userId | version                         |
 | POST   | /poroteos/:id/salir            | version                         |
+
+## Seguridad y sesión del navegador
+
+El frontend coordinado usa cookies HttpOnly (Secure en producción), protección CSRF
+por Origin exacto y encabezado no simple. No recibe tokens en JSON ni los persiste.
+Los contratos Bearer de la tabla anterior se conservan para consumidores explícitos;
+el modo navegador envía X-Session-Mode: cookie, refresh con body vacío y sesion
+solo con vencimientos. Nuevas variables opcionales: TRUST_PROXY (vacío por defecto),
+SESSION_SAME_SITE=lax, SESSION_DAYS=7, SUPABASE_JWT_AUDIENCE=authenticated y
+SUPABASE_JWT_ISSUER (por defecto SUPABASE_URL/auth/v1). No modificar .env real.
+
+[Auditoría, contrato, límites y configuraciones pendientes](docs/seguridad.md).
+Desplegar ambos repositorios juntos y verificar cookies en los dominios reales.
+No se modificó Supabase remoto.

@@ -6,7 +6,11 @@ export const registroBody = z.object({
   nombre: z.string().trim().min(2, 'Ingresá tu nombre (mínimo 2 caracteres)').max(120),
   email,
   // No recortar contraseñas: los espacios forman parte del secreto.
-  password: z.string().min(8, 'Usá al menos 8 caracteres').max(72),
+  password: z
+    .string()
+    .min(8, 'Usá al menos 8 caracteres')
+    .max(72)
+    .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Máximo 72 bytes UTF-8'),
 });
 
 export const loginBody = z.object({
@@ -15,6 +19,8 @@ export const loginBody = z.object({
 });
 
 export const refreshBody = z.object({ refreshToken: z.string().min(1).max(8192) });
+// Precondición opcional del navegador: solo permite rechazar un cambio de cuenta.
+export const expectedUserHeader = z.string().uuid().optional();
 
 export const bearerHeader = z
   .string()

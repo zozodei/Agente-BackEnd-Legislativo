@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { verifiedClaims } from './claims.fixture.js';
 
 vi.mock('../src/config/supabaseAuth.js', () => ({ createAuthClient: vi.fn() }));
 vi.mock('../src/config/env.js', async (original) => {
@@ -192,6 +193,7 @@ beforeEach(() => {
   ];
   createAuthClient.mockReturnValue({
     auth: {
+      getClaims: vi.fn(async (token) => verifiedClaims(token)),
       getUser: vi.fn(async (token) => ({
         data: { user: [A, B, C, D].includes(token) ? cuenta(token) : null },
         error: null,

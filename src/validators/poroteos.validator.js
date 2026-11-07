@@ -77,7 +77,7 @@ const votoItem = z
     origen: z.enum(['manual', 'ia']).default('manual'),
     confianza: z.number().min(0).max(1).optional().nullable(),
     justificacion: z.string().trim().max(5000).optional().nullable(),
-    fuentes: z.array(z.record(z.unknown())).max(50).optional().nullable(),
+    fuentes: z.array(z.record(z.string(), z.unknown())).max(50).optional().nullable(),
   })
   .strict();
 

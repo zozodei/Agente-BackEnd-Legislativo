@@ -1,8 +1,8 @@
 # Autenticación del backend
 
-La implementación sigue las llamadas existentes en el frontend separado:
+Implementación coordinada con el frontend separado:
 `src/api/resources.ts`, `src/api/client.ts`, `src/types/index.ts` y
-`src/features/auth/AuthProvider.tsx`. No se cambió ese repositorio.
+`src/features/auth/AuthProvider.tsx`. Ambos repositorios se adaptaron al modo cookie descrito en [seguridad](seguridad.md).
 
 ## Configuración manual en Supabase
 
@@ -32,7 +32,7 @@ En el Dashboard del proyecto configurado en el `.env`, revisar manualmente:
    correo incorporado tiene restricciones de destinatarios y límites de envío.
    Revisar errores en Auth Logs si falla el envío.
 5. Revisar la política de contraseñas de Auth. El formulario y backend validan de
-   8 a 72 caracteres para registro; requisitos adicionales del proyecto pueden
+   8 a 72 caracteres y máximo 72 bytes UTF-8 para registro; requisitos adicionales del proyecto pueden
    producir un error de contraseña débil que se muestra en el campo.
 
 Se mantienen `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` y
@@ -45,7 +45,12 @@ sistema (`NODE_OPTIONS=--use-system-ca` en una versión compatible), como se exp
 en el README. No desactivar validación TLS. Un fallo TLS no permite comprobar las
 credenciales ni se traduce como contraseña incorrecta.
 
-## Contratos HTTP
+## Contratos HTTP Bearer para clientes explícitos
+
+El navegador envía X-Session-Mode: cookie y credentials include. En ese modo
+refresh usa cookie (body vacío); login/registro/refresh devuelven sesion solo con
+vencimientos, sin accessToken ni refreshToken. Mutaciones requieren Origin permitido
+y encabezado no simple; ver [contrato completo y CSRF](seguridad.md).
 
 Base `/api`; las respuestas de error mantienen `{ error: { code, message, details? } }`.
 
@@ -78,7 +83,7 @@ la confirmación está activada. Se conserva esa respuesta de confirmación gen�
 para no añadir consultas que permitan enumerar cuentas. Solo se devuelve 409 si
 el proveedor devuelve explícitamente el error de duplicado.
 
-`me` valida el access token con `getUser`, sin decodificar un JWT y confiar en sus
+`me` valida el access token con `getClaims`, emisor/audiencia/expiración y `getUser`, sin decodificar un JWT y confiar en sus
 campos sin verificación. Logout usa `auth.admin.signOut(jwt, 'local')`, el mismo
 método que `signOut` utiliza internamente en el SDK instalado, con cliente público
 y JWT explícito; no usa `supabaseAdmin`, no renueva tokens ni cierra otras sesiones.

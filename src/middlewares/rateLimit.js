@@ -42,3 +42,30 @@ export const participantesLimiter = rateLimit({
   legacyHeaders: false,
   handler,
 });
+
+/** Combinar con límite IP anterior; el ID proviene de autenticar. */
+export const participantesUsuarioLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  keyGenerator: (req) => req.usuario.id,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});
+export const pdfIpLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 5,
+  skip: (req) => !req.is('multipart/form-data'),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});
+export const pdfUsuarioLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 5,
+  keyGenerator: (req) => req.usuario.id,
+  skip: (req) => !req.is('multipart/form-data'),
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});

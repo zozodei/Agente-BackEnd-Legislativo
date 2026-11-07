@@ -1,7 +1,13 @@
 import { Router } from 'express';
 import { autenticar } from '../middlewares/auth.js';
 import { validate } from '../middlewares/validate.js';
-import { writeLimiter, participantesLimiter } from '../middlewares/rateLimit.js';
+import {
+  writeLimiter,
+  participantesLimiter,
+  participantesUsuarioLimiter,
+  pdfIpLimiter,
+  pdfUsuarioLimiter,
+} from '../middlewares/rateLimit.js';
 import { uploadPdf } from '../middlewares/upload.js';
 import * as poroteos from '../controllers/poroteos.controller.js';
 import {
@@ -27,7 +33,14 @@ router.get('/poroteos-publicos', validate({ query: listPoroteosQuery }), poroteo
 router.get('/poroteos-publicos/:id', validate({ params: poroteoParams }), poroteos.getPublico);
 
 router.use('/poroteos', noStore, autenticar, writeLimiter);
-router.post('/poroteos', uploadPdf, validate({ body: createPoroteoBody }), poroteos.create);
+router.post(
+  '/poroteos',
+  pdfIpLimiter,
+  pdfUsuarioLimiter,
+  uploadPdf,
+  validate({ body: createPoroteoBody }),
+  poroteos.create,
+);
 router.get('/poroteos', validate({ query: listPoroteosQuery }), poroteos.list);
 router.get('/poroteos/:id', validate({ params: poroteoParams }), poroteos.get);
 router.patch(
@@ -49,6 +62,7 @@ router.get('/poroteos/:id/miembros', validate({ params: poroteoParams }), porote
 router.post(
   '/poroteos/:id/miembros',
   participantesLimiter,
+  participantesUsuarioLimiter,
   validate({ params: poroteoParams, body: agregarMiembroBody }),
   poroteos.agregarMiembro,
 );

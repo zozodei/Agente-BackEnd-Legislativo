@@ -11,6 +11,11 @@ export async function autenticar(req, res, next) {
   });
   if (error) return next(error);
   req.usuario = await getUsuario(req.valid.auth.accessToken);
+  // No autoriza ni elige actor: evita ejecutar una petición de la pestaña A
+  // con cookies de B durante el cambio de cuenta. El actor sigue siendo getUser.
+  if (req.valid.auth.expectedUserId && req.valid.auth.expectedUserId !== req.usuario.id) {
+    return next(new AppError(401, 'SESSION_EXPIRED', 'La cuenta de la sesión cambió'));
+  }
   return next();
 }
 

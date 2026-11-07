@@ -15,7 +15,7 @@ export function isMissingRelation(error) {
  */
 export function unwrap({ data, error, count }, contexto = 'consulta') {
   if (error) {
-    logger.error({ err: error, contexto }, 'Error de Supabase');
+    logger.error({ code: error.code, contexto }, 'Error de Supabase');
     if (isMissingRelation(error)) {
       throw AppError.unavailable(
         'Falta una tabla o función en la base. ¿Se aplicaron las migraciones de supabase/migrations?',

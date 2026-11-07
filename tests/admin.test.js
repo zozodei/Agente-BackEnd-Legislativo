@@ -46,7 +46,22 @@ beforeEach(() => {
   vi.resetAllMocks();
   emails.splice(0, emails.length, ...LISTA);
   getUser = vi.fn().mockResolvedValue({ data: { user: identity() }, error: null });
-  createAuthClient.mockReturnValue({ auth: { getUser } });
+  createAuthClient.mockReturnValue({
+    auth: {
+      getUser,
+      getClaims: vi.fn().mockResolvedValue({
+        data: {
+          claims: {
+            sub: UUID,
+            iss: 'https://test-project.supabase.co/auth/v1',
+            aud: 'authenticated',
+            exp: 4102444800,
+          },
+        },
+        error: null,
+      }),
+    },
+  });
   stats.getResumen.mockResolvedValue({
     camara: { diputados: 257, bloques: 21 },
     votaciones: { total: 2992 },

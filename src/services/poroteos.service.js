@@ -62,6 +62,8 @@ export async function createPoroteo(
   if (archivo) {
     const extraido = await extractPdfText(archivo.buffer);
     texto = [texto, extraido].filter(Boolean).join('\n\n') || null;
+    if (texto?.length > 500_000)
+      throw AppError.badRequest('El texto combinado supera 500000 caracteres');
   }
 
   const data = await poroteosRepository.insertPoroteo({
