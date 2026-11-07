@@ -26,6 +26,46 @@ export async function saveVotos(req, res) {
 }
 
 export async function remove(req, res) {
-  await poroteosService.deletePoroteo(req.valid.params.id, req.usuario.id);
+  await poroteosService.deletePoroteo(req.valid.params.id, req.valid.body, req.usuario.id);
   res.status(204).end();
+}
+
+export async function listPublicos(req, res) {
+  res.json(await poroteosService.listPoroteosPublicos(req.valid.query));
+}
+export async function getPublico(req, res) {
+  res.json({ data: await poroteosService.getPoroteoPublico(req.valid.params.id) });
+}
+export async function listMiembros(req, res) {
+  res.json({ data: await poroteosService.listMiembros(req.valid.params.id, req.usuario.id) });
+}
+export async function agregarMiembro(req, res) {
+  res.json({
+    data: await poroteosService.agregarMiembro(req.valid.params.id, req.valid.body, req.usuario.id),
+  });
+}
+export async function cambiarMiembro(req, res) {
+  res.json({
+    data: await poroteosService.cambiarMiembro(
+      req.valid.params.id,
+      req.valid.params.userId,
+      req.valid.body,
+      req.usuario.id,
+    ),
+  });
+}
+export async function quitarMiembro(req, res) {
+  res.json({
+    data: await poroteosService.quitarMiembro(
+      req.valid.params.id,
+      req.valid.params.userId,
+      req.valid.body,
+      req.usuario.id,
+    ),
+  });
+}
+export async function salir(req, res) {
+  res.json({
+    data: await poroteosService.salirPoroteo(req.valid.params.id, req.valid.body, req.usuario.id),
+  });
 }

@@ -41,6 +41,7 @@ la base. Verificar esos metadatos queda pendiente de acceso de lectura al esquem
 | [CvEleccion.js](CvEleccion.js)             | `public.cv_elecciones`         | `id`                        | Inventario; DDL pendiente |
 | [CvMeta.js](CvMeta.js)                     | `public.cv_meta`               | `clave`                     | Inventario; DDL pendiente |
 | [Poroteo.js](Poroteo.js)                   | `public.poroteos`              | `id`                        | Migración local           |
+| [PoroteoUsuario.js](PoroteoUsuario.js)     | public.poroteo_usuarios        | (poroteo_id, user_id)       | SQL exacto del historial  |
 | [PoroteoVoto.js](PoroteoVoto.js)           | `public.poroteo_votos`         | `(poroteo_id, diputado_id)` | Migración local           |
 
 ## Relaciones
@@ -101,10 +102,15 @@ alineación conservan sus proyecciones propias; no se etiquetan como una fila de
 construyendo explícitamente los DTO camelCase de la API y no serializan entities
 completas al frontend.
 
-## Propietario de poroteos
+## Membresías y publicación
 
-`Poroteo.user_id` refleja el UUID nullable de Auth; no tiene lógica ni defaults.
-La migración `20261106132353_poroteos_user_id.sql` registra la FK
-`poroteos.user_id -> auth.users.id ON DELETE CASCADE` y el índice de propietario
-y fecha. Registros NULL conservados; ver [autorización](../../docs/poroteos-privados.md).
-El esquema remoto preparado fue informado por el usuario; no se modificó aquí.
+Poroteo.user_id es el creador histórico, nullable, FK ON DELETE SET NULL.
+Poroteo.visibilidad es text NOT NULL (privado/publico); version es bigint NOT NULL.
+PoroteoUsuario describe public.poroteo_usuarios: poroteo_id UUID NOT NULL,
+user_id UUID NOT NULL, rol TEXT NOT NULL y created_at TIMESTAMPTZ NOT NULL.
+PK compuesta (poroteo_id, user_id); FK del padre CASCADE y cuenta Auth RESTRICT.
+Son 16 entities. Los campos no tienen lógica, consultas ni defaults.
+
+Contrastado contra los SQL exactos aportados por el usuario, recuperados del historial
+del proyecto jhwsuyydwfqnegpufrqs. Ambos archivos se copiaron sin cambios y sus SHA-256
+coinciden. No se ejecutó SQL remoto. Ver [contrato](../../docs/poroteos-colaborativos.md).

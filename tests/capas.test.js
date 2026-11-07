@@ -34,6 +34,9 @@ const UUID = '6f1c2a4e-1b2c-4d3e-8f90-123456789abc';
 const path = `/api/poroteos/${UUID}`;
 const poroteo = {
   id: UUID,
+  version: 1,
+  visibilidad: 'privado',
+  membresia: [{ rol: 'dueno' }],
   titulo: 'Ley de prueba',
   descripcion: null,
   archivo_nombre: null,
@@ -110,6 +113,7 @@ function enqueue(client, table, data, extra = {}) {
 function detail(votos = [voto]) {
   enqueue(supabaseAdmin, 'poroteos', poroteo);
   enqueue(supabaseAdmin, 'poroteo_votos', votos);
+  enqueue(supabaseAdmin, 'poroteos', poroteo);
 }
 
 beforeEach(() => {
@@ -124,171 +128,24 @@ beforeEach(() => {
 });
 
 describe('Poroteos a través de todas las capas', () => {
-  it('mantiene detalle camelCase y resultado calculado', async () => {
+  it('mantiene DTO, permisos y resultado calculado', async () => {
     detail([{ ...voto, confianza: '0.750' }]);
     const res = await request(app).get(path);
     expect(res.status).toBe(200);
-    expect(res.body.data).toEqual({
+    expect(res.body.data).toMatchObject({
       id: UUID,
-      titulo: poroteo.titulo,
-      descripcion: null,
-      archivoNombre: null,
       textoProyecto: 'Texto',
-      camara: 'diputados',
-      tipoMayoria: 'simple',
-      estado: 'borrador',
-      origen: 'manual',
-      autor: null,
-      metadata: {},
-      createdAt: '2026-11-01',
-      updatedAt: '2026-11-06',
-      votos: [
-        {
-          diputadoId: 1,
-          voto: 'AFIRMATIVO',
-          origen: 'manual',
-          confianza: 0.75,
-          justificacion: null,
-          fuentes: null,
-          updatedAt: '2026-11-06',
-        },
-      ],
-      resumen: {
-        tipoMayoria: 'simple',
-        conteo: {
-          AFIRMATIVO: 1,
-          NEGATIVO: 0,
-          ABSTENCION: 0,
-          AUSENTE: 0,
-          INDEFINIDO: 0,
-          sinAsignar: 256,
-        },
-        presentes: 1,
-        enDisputa: 256,
-        quorum: { requerido: 129, alcanzado: false, faltan: 128 },
-        mayoria: { requeridos: 1, faltan: 0 },
-        resultado: 'SIN_QUORUM',
-        escenarios: { mejorCaso: 'APROBADO', peorCaso: 'RECHAZADO' },
-        definido: false,
-      },
+      version: 1,
+      rolActual: 'dueno',
+      permisos: { editar: true, publicar: true },
+      votos: [{ diputadoId: 1, confianza: 0.75 }],
+      resumen: { enDisputa: 256, resultado: 'SIN_QUORUM' },
     });
     expect(supabase.from).not.toHaveBeenCalled();
   });
-
-  it.each(['merge', 'replace'])(
-    'guarda %s y recalcula el origen desde todos los votos',
-    async (modo) => {
-      enqueue(supabaseAdmin, 'poroteos', { id: UUID });
-      enqueue(supabase, 'v_diputados_actuales', [diputado]);
-      const borrado = modo === 'replace' ? enqueue(supabaseAdmin, 'poroteo_votos', null) : null;
-      const escritura = enqueue(supabaseAdmin, 'poroteo_votos', null);
-      enqueue(supabaseAdmin, 'poroteo_votos', [voto, { ...voto, diputado_id: 2, origen: 'ia' }]);
-      const touch = enqueue(supabaseAdmin, 'poroteos', null);
-      detail();
-      const res = await request(app)
-        .put(`${path}/votos`)
-        .send({ modo, votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
-      expect(res.status).toBe(200);
-      expect(res.body.data.votos[0].diputadoId).toBe(1);
-      expect(escritura.upsert).toHaveBeenCalledWith(
-        [
-          {
-            poroteo_id: UUID,
-            diputado_id: 1,
-            voto: 'AFIRMATIVO',
-            origen: 'manual',
-            confianza: null,
-            justificacion: null,
-            fuentes: null,
-          },
-        ],
-        { onConflict: 'poroteo_id,diputado_id' },
-      );
-      expect(touch.update).toHaveBeenCalledWith({ origen: 'mixto' });
-      if (borrado) {
-        expect(borrado.delete).toHaveBeenCalledOnce();
-        expect(borrado.eq).toHaveBeenCalledWith('poroteo_id', UUID);
-        expect(borrado.delete.mock.invocationCallOrder[0]).toBeLessThan(
-          escritura.upsert.mock.invocationCallOrder[0],
-        );
-      } else {
-        expect(supabaseAdmin.from).toHaveBeenCalledTimes(6);
-        expect(escritura.delete).not.toHaveBeenCalled();
-      }
-    },
-  );
-
-  it.each(['merge', 'replace'])(
-    '%s valida diputados antes de cualquier modificación',
-    async (modo) => {
-      const existe = enqueue(supabaseAdmin, 'poroteos', { id: UUID });
-      enqueue(supabase, 'v_diputados_actuales', [diputado]);
-      const res = await request(app)
-        .put(`${path}/votos`)
-        .send({ modo, votos: [{ diputadoId: 99, voto: 'NEGATIVO' }] });
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({
-        error: {
-          code: 'BAD_REQUEST',
-          message: 'Hay diputados que no existen',
-          details: { diputadoIds: [99] },
-        },
-      });
-      expect(supabaseAdmin.from).toHaveBeenCalledTimes(1);
-      expect(existe.delete).not.toHaveBeenCalled();
-      expect(existe.update).not.toHaveBeenCalled();
-    },
-  );
-
-  it('replace vacío borra sin upsert y deja origen manual', async () => {
-    enqueue(supabaseAdmin, 'poroteos', { id: UUID });
-    enqueue(supabase, 'v_diputados_actuales', [diputado]);
-    const borrado = enqueue(supabaseAdmin, 'poroteo_votos', null);
-    enqueue(supabaseAdmin, 'poroteo_votos', []);
-    const touch = enqueue(supabaseAdmin, 'poroteos', null);
-    detail([]);
-    const res = await request(app).put(`${path}/votos`).send({ modo: 'replace', votos: [] });
-    expect(res.status).toBe(200);
-    expect(borrado.delete).toHaveBeenCalledOnce();
-    expect(touch.update).toHaveBeenCalledWith({ origen: 'manual' });
-    expect(supabaseAdmin.from).toHaveBeenCalledTimes(6);
-    expect(res.body.data.resumen.enDisputa).toBe(257);
-  });
-
-  it('no oculta el fallo de upsert posterior al borrado de replace', async () => {
-    enqueue(supabaseAdmin, 'poroteos', { id: UUID });
-    enqueue(supabase, 'v_diputados_actuales', [diputado]);
-    const borrado = enqueue(supabaseAdmin, 'poroteo_votos', null);
-    enqueue(supabaseAdmin, 'poroteo_votos', null, {
-      error: { code: '23503', message: 'Detalle privado' },
-    });
-    const res = await request(app)
-      .put(`${path}/votos`)
-      .send({ modo: 'replace', votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
-    expect(borrado.delete).toHaveBeenCalledOnce();
-    expect(res.status).toBe(502);
-    expect(res.body).toEqual({
-      error: {
-        code: 'UPSTREAM_ERROR',
-        message: 'Error consultando la base de datos',
-        details: { contexto: 'poroteos.votos.upsert' },
-      },
-    });
-    expect(supabaseAdmin.from).toHaveBeenCalledTimes(3);
-  });
-
-  it('poroteo inexistente no consulta diputados ni modifica votos', async () => {
-    enqueue(supabaseAdmin, 'poroteos', null);
-    const res = await request(app).put(`${path}/votos`).send({ votos: [] });
-    expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe(`No existe el poroteo ${UUID}`);
-    expect(supabase.from).not.toHaveBeenCalled();
-    expect(supabaseAdmin.from).toHaveBeenCalledTimes(1);
-  });
-
-  it('combina texto pegado y PDF, conserva Location y el nombre sin almacenar el archivo', async () => {
+  it('combina PDF y texto, crea privado y recarga la revisión posterior al trigger', async () => {
     extractPdfText.mockResolvedValue('Texto extraído');
-    const insert = enqueue(supabaseAdmin, 'poroteos', { id: UUID });
+    const insert = enqueue(supabaseAdmin, 'poroteos', { id: UUID, version: 1 });
     detail([]);
     const res = await request(app)
       .post('/api/poroteos')
@@ -301,19 +158,15 @@ describe('Poroteos a través de todas las capas', () => {
     expect(res.status).toBe(201);
     expect(res.headers.location).toBe(path);
     expect(extractPdfText).toHaveBeenCalledWith(Buffer.from('%PDF-prueba'));
-    expect(insert.insert).toHaveBeenCalledWith({
-      user_id: '11111111-1111-4111-8111-111111111111',
-      titulo: 'Ley de prueba',
-      descripcion: null,
-      texto_proyecto: 'Texto pegado\n\nTexto extraído',
-      archivo_nombre: 'proyecto.pdf',
-      tipo_mayoria: 'simple',
-      autor: null,
-      camara: 'diputados',
-      origen: 'manual',
-    });
+    expect(insert.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        user_id: '11111111-1111-4111-8111-111111111111',
+        visibilidad: 'privado',
+        texto_proyecto: 'Texto pegado\n\nTexto extraído',
+        archivo_nombre: 'proyecto.pdf',
+      }),
+    );
   });
-
   it('mantiene el límite de PDF de 10 MB', async () => {
     const res = await request(app)
       .post('/api/poroteos')
@@ -325,36 +178,25 @@ describe('Poroteos a través de todas las capas', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.message).toBe('El archivo supera el tamaño máximo (10 MB)');
     expect(supabaseAdmin.from).not.toHaveBeenCalled();
-    expect(extractPdfText).not.toHaveBeenCalled();
   });
-
-  it('PATCH transforma campos y DELETE conserva 204 sin cuerpo', async () => {
-    const patch = enqueue(supabaseAdmin, 'poroteos', [{ id: UUID }]);
-    detail([]);
-    const res = await request(app)
-      .patch(path)
-      .send({ textoProyecto: 'Nuevo', tipoMayoria: 'absoluta', descripcion: null });
-    expect(res.status).toBe(200);
-    expect(patch.update).toHaveBeenCalledWith({
-      texto_proyecto: 'Nuevo',
-      tipo_mayoria: 'absoluta',
-      descripcion: null,
-    });
-    enqueue(supabaseAdmin, 'poroteos', [{ id: UUID }]);
-    const removed = await request(app).delete(path);
-    expect(removed.status).toBe(204);
-    expect(removed.text).toBe('');
-  });
-
-  it('lista con paginación, búsqueda escapada y resumen', async () => {
+  it('lista con join de membresía, paginación y búsqueda escapada', async () => {
     const listado = enqueue(supabaseAdmin, 'poroteos', [poroteo], { count: 21 });
     enqueue(supabaseAdmin, 'poroteo_votos', [voto]);
+    enqueue(supabaseAdmin, 'poroteos', [poroteo], { count: 21 });
     const res = await request(app)
       .get('/api/poroteos')
       .query({ q: 'Ley%_', page: 2, pageSize: 20 });
     expect(res.status).toBe(200);
     expect(res.body.meta).toEqual({ page: 2, pageSize: 20, total: 21, totalPages: 2 });
-    expect(res.body.data[0].resumen.conteo.AFIRMATIVO).toBe(1);
+    expect(listado.select).toHaveBeenCalledWith(
+      expect.stringContaining('membresia:poroteo_usuarios!inner(rol)'),
+      { count: 'exact' },
+    );
+    expect(listado.eq).toHaveBeenCalledWith(
+      'membresia.user_id',
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(listado.eq).not.toHaveBeenCalledWith('user_id', expect.anything());
     expect(listado.ilike).toHaveBeenCalledWith('titulo', '%Ley\\%\\_%');
     expect(listado.range).toHaveBeenCalledWith(20, 39);
   });

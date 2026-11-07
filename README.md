@@ -88,12 +88,22 @@ Base: `/api`. Respuestas: `{ data }` o `{ data, meta }` si es paginada. Errores:
 | `POST`   | `/poroteos`            | Crear (JSON o `multipart/form-data` con `archivo` PDF opcional)             |
 | `GET`    | `/poroteos`            | Listado con resumen del resultado                                           |
 | `GET`    | `/poroteos/:id`        | Detalle con votos y resultado calculado                                     |
-| `PATCH`  | `/poroteos/:id`        | Editar título, descripción, tipo de mayoría, estado                         |
+| `PATCH`  | `/poroteos/:id`        | Editar contenido y visibilidad (dueño); requiere version                    |
 | `PUT`    | `/poroteos/:id/votos`  | Guardar votos estimados (`modo: merge \| replace`)                          |
-| `DELETE` | `/poroteos/:id`        | Borrar                                                                      |
+| `DELETE` | `/poroteos/:id`        | Borrar como dueño; body { version }                                         |
 
-Todas las rutas `/poroteos` requieren Bearer; listan y operan solo sobre el dueño
-verificado. Ver [modelo privado](docs/poroteos-privados.md).
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
 
 Más detalle (formatos, reglas de cálculo, esquema) en [`CLAUDE.md`](CLAUDE.md).
 
@@ -135,7 +145,7 @@ para poroteos: límite de escritura → carga PDF (solo POST) → validación �
 
 ### Entities de tablas
 
-`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+`src/entities/` contiene las 16 clases de tablas, con campos públicos sin
 inicializadores y `export default`. Son la excepción al estilo de módulos con
 funciones: no contienen lógica, validación, consultas ni carga de relaciones.
 Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
@@ -172,11 +182,7 @@ clientes Supabase dobles y extracción PDF simulada; comprueba DTOs, errores,
 paginación, filtros, caché, carga PDF y guardado de votos. Las pruebas existentes
 de HTTP y del cálculo puro se conservan.
 
-Limitación previa pendiente: `replace` borra y después hace upsert en operaciones
-separadas, sin transacción. Si falla el upsert, los votos anteriores ya se borraron.
-El recálculo de origen y la lectura final también son independientes. Se conserva
-la secuencia y se cubre el fallo intermedio; resolver la atomicidad requiere una
-tarea posterior. No se agregaron funciones SQL ni migraciones.
+El guardado de votos, incluido replace, usa la RPC transaccional poroteo_mutar con versión.
 
 En la comprobación inicial pasaron 31 pruebas y lint; el chequeo de formato fallaba
 por el `AGENTS.md` local sin seguimiento. Se conservó su contenido y se actualizó
@@ -200,8 +206,10 @@ Todo `/api/admin`, incluso rutas futuras, está protegido y usa `no-store`.
 
 `admin.repository.js` usa la clave secreta únicamente para **listar** cuentas Auth
 con `listUsers({ page, perPage })`. El service devuelve solo cinco campos. No se
-agregan operaciones administrativas de escritura. Los demás endpoints de
-poroteos normales requieren propietario; el backoffice conserva consulta global.
+agregan operaciones administrativas de escritura. participantes.repository.js también usa Auth admin
+para buscar cuentas existentes por email, solo después de autorizar al dueño; nunca crea cuentas. participantes.repository.js también usa Auth admin
+para buscar cuentas existentes por email, solo después de autorizar al dueño; nunca crea cuentas. Los demás endpoints de
+poroteos normales requieren membresía; el backoffice conserva consulta global.
 
 La interfaz `/backoffice` está en el repo frontend: resumen, cuentas, listado y
 detalle de poroteos, exclusivamente de consulta. Pasos manuales, contratos,
@@ -232,12 +240,18 @@ usan `accessToken`, `refreshToken`, `expiresIn`, `expiresAt` (segundos Unix),
 Logout revoca el refresh de la sesión actual; un access token ya emitido puede
 seguir siendo válido hasta vencer.
 
-Todas las rutas normales `/api/poroteos` exigen Bearer validado y filtran por
-`poroteos.user_id = req.usuario.id`, incluidos conteos, actualizaciones y borrados.
-Los votos requieren autorizar el padre. Sin sesión: 401; ajeno, NULL o inexistente: 404. POST/PATCH rechazan propietario enviado por el cliente; `autor` es descriptivo.
-Solo el backoffice superadmin mantiene consulta global, sin escrituras globales.
-Modelo, migración local no aplicada y asignación administrativa explícita de
-registros anteriores: [poroteos privados](docs/poroteos-privados.md).
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
 
 ## Problemas frecuentes
 
@@ -246,3 +260,28 @@ registros anteriores: [poroteos privados](docs/poroteos-privados.md).
 ## Fuente de los datos
 
 Los datos de votaciones provienen de [¿Cómo Votó?](https://comovoto.dev.ar), de Rodrigo Quiroga ([repo](https://github.com/rquiroga7/Como_voto)). Hay que citar la fuente en la plataforma.
+
+## Colaboración y publicación
+
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
+
+| Método | Ruta nueva                     | Contrato                        |
+| ------ | ------------------------------ | ------------------------------- |
+| GET    | /poroteos-publicos             | Listado anónimo paginado        |
+| GET    | /poroteos-publicos/:id         | Detalle público de solo lectura |
+| GET    | /poroteos/:id/miembros         | Solo dueño; miembros y versión  |
+| POST   | /poroteos/:id/miembros         | version, email y rol            |
+| PATCH  | /poroteos/:id/miembros/:userId | version y rol                   |
+| DELETE | /poroteos/:id/miembros/:userId | version                         |
+| POST   | /poroteos/:id/salir            | version                         |

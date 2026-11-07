@@ -8,6 +8,32 @@ const textoProyecto = z.string().trim().max(500_000).optional().nullable();
 const tipoMayoria = z.enum(TIPOS_MAYORIA);
 const estado = z.enum(['borrador', 'final']);
 const autor = z.string().trim().max(120).optional().nullable();
+// BIGINT puede llegar como cadena. No aceptar números fuera del rango seguro de JS.
+export const versionSchema = z.union([
+  z.number().int().positive().safe(),
+  z
+    .string()
+    .max(19)
+    .refine((v) => /^[1-9]\d*$/.test(v) && BigInt(v) <= 9223372036854775807n),
+]);
+const rol = z.enum(['dueno', 'colaborador']);
+export const versionBody = z.object({ version: versionSchema }).strict();
+export const miembroParams = z
+  .object({ id: z.string().uuid(), userId: z.string().uuid() })
+  .strict();
+export const agregarMiembroBody = z
+  .object({
+    version: versionSchema,
+    email: z
+      .string()
+      .trim()
+      .email()
+      .max(254)
+      .transform((s) => s.toLowerCase()),
+    rol,
+  })
+  .strict();
+export const cambiarRolBody = z.object({ version: versionSchema, rol }).strict();
 
 /** Body de creación. Llega como JSON o como multipart/form-data (con PDF opcional). */
 export const createPoroteoBody = z
@@ -21,10 +47,19 @@ export const createPoroteoBody = z
   .strict();
 
 export const updatePoroteoBody = z
-  .object({ titulo, descripcion, textoProyecto, tipoMayoria, estado, autor })
+  .object({
+    titulo,
+    descripcion,
+    textoProyecto,
+    tipoMayoria,
+    estado,
+    autor,
+    visibilidad: z.enum(['privado', 'publico']),
+  })
   .partial()
+  .extend({ version: versionSchema })
   .strict()
-  .refine((body) => Object.keys(body).length > 0, { message: 'No hay campos para actualizar' });
+  .refine((body) => Object.keys(body).length > 1, { message: 'No hay campos para actualizar' });
 
 export const poroteoParams = uuidParams;
 
@@ -34,15 +69,17 @@ export const listPoroteosQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const votoItem = z.object({
-  diputadoId: z.coerce.number().int().positive(),
-  voto: z.enum(VOTOS_POROTEO),
-  // Campos preparados para la IA. En el poroteo manual no se envían.
-  origen: z.enum(['manual', 'ia']).default('manual'),
-  confianza: z.number().min(0).max(1).optional().nullable(),
-  justificacion: z.string().trim().max(5000).optional().nullable(),
-  fuentes: z.array(z.record(z.unknown())).max(50).optional().nullable(),
-});
+const votoItem = z
+  .object({
+    diputadoId: z.coerce.number().int().positive(),
+    voto: z.enum(VOTOS_POROTEO),
+    // Campos preparados para la IA. En el poroteo manual no se envían.
+    origen: z.enum(['manual', 'ia']).default('manual'),
+    confianza: z.number().min(0).max(1).optional().nullable(),
+    justificacion: z.string().trim().max(5000).optional().nullable(),
+    fuentes: z.array(z.record(z.unknown())).max(50).optional().nullable(),
+  })
+  .strict();
 
 /**
  * PUT /poroteos/:id/votos
@@ -51,6 +88,7 @@ const votoItem = z.object({
  */
 export const putVotosBody = z
   .object({
+    version: versionSchema,
     modo: z.enum(['merge', 'replace']).default('merge'),
     votos: z.array(votoItem).max(300),
   })

@@ -1,0 +1,1 @@
+DROP FUNCTION public.poroteo_buscar_usuario(text); NOTIFY pgrst, 'reload schema';

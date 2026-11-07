@@ -33,3 +33,12 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   handler,
 });
+
+/** Búsqueda de cuentas únicamente como parte del alta autorizada de participantes. */
+export const participantesLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});

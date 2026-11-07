@@ -82,7 +82,7 @@ tests/                Vitest + Supertest: contratos HTTP, capas con cliente dobl
 
 ### Entities de tablas
 
-`src/entities/` contiene las 15 clases de tablas, con campos públicos sin
+`src/entities/` contiene las 16 clases de tablas, con campos públicos sin
 inicializadores y `export default`. Son la excepción al estilo de módulos con
 funciones: no contienen lógica, validación, consultas ni carga de relaciones.
 Los repositories pueden referenciarlas por JSDoc, usando `Partial`/`Pick` para
@@ -143,21 +143,21 @@ RLS **habilitado sin políticas** → nadie con la clave pública puede leer ni 
 
 `poroteos`
 
-| Columna                     | Tipo          | Notas                                                               |
-| --------------------------- | ------------- | ------------------------------------------------------------------- |
-| `user_id`                   | uuid nullable | FK a auth.users(id), ON DELETE CASCADE; NULL = anterior sin asignar |
-| `id`                        | uuid PK       | `gen_random_uuid()`                                                 |
-| `titulo`                    | text          | 3–300 caracteres                                                    |
-| `descripcion`               | text          | ≤ 5000                                                              |
-| `texto_proyecto`            | text          | texto pegado o extraído del PDF (insumo para la IA)                 |
-| `archivo_nombre`            | text          | nombre del PDF (el archivo no se guarda)                            |
-| `camara`                    | text          | `diputados` / `senadores` (hoy siempre diputados)                   |
-| `tipo_mayoria`              | text          | `simple` / `absoluta` / `dos_tercios`                               |
-| `estado`                    | text          | `borrador` / `final`                                                |
-| `origen`                    | text          | `manual` / `ia` / `mixto` (se recalcula al guardar votos)           |
-| `autor`                     | text          | libre (hasta que haya auth)                                         |
-| `metadata`                  | jsonb         | libre (ej. leyes similares que use la IA)                           |
-| `created_at` / `updated_at` | timestamptz   | trigger `set_updated_at`                                            |
+| Columna                     | Tipo          | Notas                                                                   |
+| --------------------------- | ------------- | ----------------------------------------------------------------------- |
+| `user_id`                   | uuid nullable | FK a auth.users(id), ON DELETE SET NULL; creador histórico, no autoriza |
+| `id`                        | uuid PK       | `gen_random_uuid()`                                                     |
+| `titulo`                    | text          | 3–300 caracteres                                                        |
+| `descripcion`               | text          | ≤ 5000                                                                  |
+| `texto_proyecto`            | text          | texto pegado o extraído del PDF (insumo para la IA)                     |
+| `archivo_nombre`            | text          | nombre del PDF (el archivo no se guarda)                                |
+| `camara`                    | text          | `diputados` / `senadores` (hoy siempre diputados)                       |
+| `tipo_mayoria`              | text          | `simple` / `absoluta` / `dos_tercios`                                   |
+| `estado`                    | text          | `borrador` / `final`                                                    |
+| `origen`                    | text          | `manual` / `ia` / `mixto` (se recalcula al guardar votos)               |
+| `autor`                     | text          | libre (hasta que haya auth)                                             |
+| `metadata`                  | jsonb         | libre (ej. leyes similares que use la IA)                               |
+| `created_at` / `updated_at` | timestamptz   | trigger `set_updated_at`                                                |
 
 `poroteo_votos` (PK `poroteo_id + diputado_id`)
 
@@ -194,35 +194,45 @@ Un diputado sin fila en `poroteo_votos` = **sin asignar** (cuenta como en disput
 
 Base `/api`. JSON. Paginadas → `{ data: [...], meta: { page, pageSize, total, totalPages } }`. Simples → `{ data }`. Errores → `{ error: { code, message, details? } }` con códigos `BAD_REQUEST`, `NOT_FOUND`, `RATE_LIMITED`, `CORS_FORBIDDEN`, `UPSTREAM_ERROR` (502), `SERVICE_UNAVAILABLE` (503, falta migración), `INTERNAL_ERROR`.
 
-| Método | Ruta                   | Query / Body                                                                                                                    | Notas                                                                                                                                           |
-| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/health`              |                                                                                                                                 |                                                                                                                                                 |
-| POST   | `/auth/registro`       | `{ nombre, email, password }`                                                                                                   | 201; `{ data: { usuario, sesion, requiereConfirmacion } }`                                                                                      |
-| POST   | `/auth/login`          | `{ email, password }`                                                                                                           | 200; `{ data: { usuario, sesion } }`                                                                                                            |
-| POST   | `/auth/refresh`        | `{ refreshToken }`                                                                                                              | 200; `{ data: { usuario, sesion } }`                                                                                                            |
-| GET    | `/auth/me`             | `Authorization: Bearer <accessToken>`                                                                                           | 200; `{ data: usuario }`                                                                                                                        |
-| POST   | `/auth/logout`         | `Authorization: Bearer <accessToken>`                                                                                           | 204; revoca la sesión actual                                                                                                                    |
-| GET    | `/admin/resumen`       | Bearer superadmin                                                                                                               | 200; conteos verificados de poroteos y datos de Cámara                                                                                          |
-| GET    | `/admin/cuentas`       | `page`, `pageSize` (≤100), Bearer superadmin                                                                                    | Paginado; solo id, email, createdAt, lastSignInAt, rol                                                                                          |
-| GET    | `/admin/poroteos`      | `q`, `page`, `pageSize`, Bearer superadmin                                                                                      | Paginado de consulta, mismos DTO de poroteos                                                                                                    |
-| GET    | `/admin/poroteos/:id`  | UUID, Bearer superadmin                                                                                                         | Detalle de consulta con votos y resumen                                                                                                         |
-| GET    | `/diputados`           | `q`, `bloque`, `distrito`, `orden` (`apellido` / `bloque` / `distrito` / `presentismo`), `page`, `pageSize` (≤300, default 300) | Filtra en memoria sobre la caché                                                                                                                |
-| GET    | `/diputados/:id`       |                                                                                                                                 | `mandatos[]`, `estadisticas` (`total`, `conteo`, `porcentaje`, `alineacionBloque`, `porAnio`), `alineamientoAnual`, `alineamientoEra`           |
-| GET    | `/diputados/:id/votos` | `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize` (≤100)                                                                   | Desde `v_votos`, por `persona_id`                                                                                                               |
-| GET    | `/bloques`             |                                                                                                                                 | `[{ nombre, bancas }]`                                                                                                                          |
-| GET    | `/distritos`           |                                                                                                                                 | `[{ nombre, bancas }]`                                                                                                                          |
-| GET    | `/votaciones`          | `q`, `desde`, `hasta` (AAAA-MM-DD), `anio`, `resultado`, `soloGeneral`, `page`, `pageSize`                                      | Solo `camara = diputados`                                                                                                                       |
-| GET    | `/votaciones/:id`      |                                                                                                                                 | `conteo`, `porcentajes`, `posturas`, `ley`, `votacionesDeLaLey[]`, `porBloque[]`, `votos[]` (con `fotoUrl`, `diputadoId` si sigue en funciones) |
-| GET    | `/stats/resumen`       |                                                                                                                                 | `camara`, `composicion[]`, `votaciones` (totales + `ultimas[]`), `fuente`                                                                       |
-| POST   | `/poroteos`            | `titulo`, `descripcion?`, `textoProyecto?`, `tipoMayoria?`, `autor?` + `archivo` (PDF, multipart)                               | 201 + `Location`                                                                                                                                |
-| GET    | `/poroteos`            | `q`, `page`, `pageSize`                                                                                                         | Cada item trae `resumen` (resultado calculado)                                                                                                  |
-| GET    | `/poroteos/:id`        |                                                                                                                                 | `votos[]` + `resumen`                                                                                                                           |
-| PATCH  | `/poroteos/:id`        | cualquier subset de `titulo`, `descripcion`, `textoProyecto`, `tipoMayoria`, `estado`, `autor`                                  |                                                                                                                                                 |
-| PUT    | `/poroteos/:id/votos`  | `{ modo: 'merge' / 'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                   | Valida que los diputados existan                                                                                                                |
-| DELETE | `/poroteos/:id`        |                                                                                                                                 | 204                                                                                                                                             |
+| Método | Ruta                   | Query / Body                                                                                                                          | Notas                                                                                                                                           |
+| ------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/health`              |                                                                                                                                       |                                                                                                                                                 |
+| POST   | `/auth/registro`       | `{ nombre, email, password }`                                                                                                         | 201; `{ data: { usuario, sesion, requiereConfirmacion } }`                                                                                      |
+| POST   | `/auth/login`          | `{ email, password }`                                                                                                                 | 200; `{ data: { usuario, sesion } }`                                                                                                            |
+| POST   | `/auth/refresh`        | `{ refreshToken }`                                                                                                                    | 200; `{ data: { usuario, sesion } }`                                                                                                            |
+| GET    | `/auth/me`             | `Authorization: Bearer <accessToken>`                                                                                                 | 200; `{ data: usuario }`                                                                                                                        |
+| POST   | `/auth/logout`         | `Authorization: Bearer <accessToken>`                                                                                                 | 204; revoca la sesión actual                                                                                                                    |
+| GET    | `/admin/resumen`       | Bearer superadmin                                                                                                                     | 200; conteos verificados de poroteos y datos de Cámara                                                                                          |
+| GET    | `/admin/cuentas`       | `page`, `pageSize` (≤100), Bearer superadmin                                                                                          | Paginado; solo id, email, createdAt, lastSignInAt, rol                                                                                          |
+| GET    | `/admin/poroteos`      | `q`, `page`, `pageSize`, Bearer superadmin                                                                                            | Paginado de consulta, mismos DTO de poroteos                                                                                                    |
+| GET    | `/admin/poroteos/:id`  | UUID, Bearer superadmin                                                                                                               | Detalle de consulta con votos y resumen                                                                                                         |
+| GET    | `/diputados`           | `q`, `bloque`, `distrito`, `orden` (`apellido` / `bloque` / `distrito` / `presentismo`), `page`, `pageSize` (≤300, default 300)       | Filtra en memoria sobre la caché                                                                                                                |
+| GET    | `/diputados/:id`       |                                                                                                                                       | `mandatos[]`, `estadisticas` (`total`, `conteo`, `porcentaje`, `alineacionBloque`, `porAnio`), `alineamientoAnual`, `alineamientoEra`           |
+| GET    | `/diputados/:id/votos` | `q`, `voto`, `anio`, `soloGeneral`, `page`, `pageSize` (≤100)                                                                         | Desde `v_votos`, por `persona_id`                                                                                                               |
+| GET    | `/bloques`             |                                                                                                                                       | `[{ nombre, bancas }]`                                                                                                                          |
+| GET    | `/distritos`           |                                                                                                                                       | `[{ nombre, bancas }]`                                                                                                                          |
+| GET    | `/votaciones`          | `q`, `desde`, `hasta` (AAAA-MM-DD), `anio`, `resultado`, `soloGeneral`, `page`, `pageSize`                                            | Solo `camara = diputados`                                                                                                                       |
+| GET    | `/votaciones/:id`      |                                                                                                                                       | `conteo`, `porcentajes`, `posturas`, `ley`, `votacionesDeLaLey[]`, `porBloque[]`, `votos[]` (con `fotoUrl`, `diputadoId` si sigue en funciones) |
+| GET    | `/stats/resumen`       |                                                                                                                                       | `camara`, `composicion[]`, `votaciones` (totales + `ultimas[]`), `fuente`                                                                       |
+| POST   | `/poroteos`            | `titulo`, `descripcion?`, `textoProyecto?`, `tipoMayoria?`, `autor?` + `archivo` (PDF, multipart)                                     | 201 + `Location`                                                                                                                                |
+| GET    | `/poroteos`            | `q`, `page`, `pageSize`                                                                                                               | Cada item trae `resumen` (resultado calculado)                                                                                                  |
+| GET    | `/poroteos/:id`        |                                                                                                                                       | `votos[]` + `resumen`                                                                                                                           |
+| PATCH  | `/poroteos/:id`        | `version` obligatorio y cualquier subset de `titulo`, `descripcion`, `textoProyecto`, `tipoMayoria`, `estado`, `autor`, `visibilidad` |                                                                                                                                                 |
+| PUT    | `/poroteos/:id/votos`  | `{ version, modo: 'merge' / 'replace', votos: [{ diputadoId, voto, origen?, confianza?, justificacion?, fuentes? }] }`                | Valida que los diputados existan                                                                                                                |
+| DELETE | `/poroteos/:id`        | `{ version }`                                                                                                                         | 204                                                                                                                                             |
 
-Todas las operaciones normales de `/poroteos` requieren Bearer y propietario;
-los IDs ajenos o sin dueño devuelven 404. Los DTO se conservan.
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
 
 ### Cálculo del resultado (`services/resultado.js`)
 
@@ -254,8 +264,10 @@ Todo `/api/admin`, incluso rutas futuras, está protegido y usa `no-store`.
 
 `admin.repository.js` usa la clave secreta únicamente para **listar** cuentas Auth
 con `listUsers({ page, perPage })`. El service devuelve solo cinco campos. No se
-agregan operaciones administrativas de escritura. Los demás endpoints de
-poroteos normales requieren propietario; el backoffice conserva consulta global.
+agregan operaciones administrativas de escritura. participantes.repository.js también usa Auth admin
+para buscar cuentas existentes por email, solo después de autorizar al dueño; nunca crea cuentas. participantes.repository.js también usa Auth admin
+para buscar cuentas existentes por email, solo después de autorizar al dueño; nunca crea cuentas. Los demás endpoints de
+poroteos normales requieren membresía; el backoffice conserva consulta global.
 
 La interfaz `/backoffice` está en el repo frontend: resumen, cuentas, listado y
 detalle de poroteos, exclusivamente de consulta. Pasos manuales, contratos,
@@ -286,12 +298,18 @@ usan `accessToken`, `refreshToken`, `expiresIn`, `expiresAt` (segundos Unix),
 Logout revoca el refresh de la sesión actual; un access token ya emitido puede
 seguir siendo válido hasta vencer.
 
-Todas las rutas normales `/api/poroteos` exigen Bearer validado y filtran por
-`poroteos.user_id = req.usuario.id`, incluidos conteos, actualizaciones y borrados.
-Los votos requieren autorizar el padre. Sin sesión: 401; ajeno, NULL o inexistente: 404. POST/PATCH rechazan propietario enviado por el cliente; `autor` es descriptivo.
-Solo el backoffice superadmin mantiene consulta global, sin escrituras globales.
-Modelo, migración local no aplicada y asignación administrativa explícita de
-registros anteriores: [poroteos privados](docs/poroteos-privados.md).
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
 
 ## 5. Seguridad: reglas que no se rompen
 
@@ -299,7 +317,7 @@ registros anteriores: [poroteos privados](docs/poroteos-privados.md).
 
 - La clave secreta (`SUPABASE_SECRET_KEY`) vive **solo** acá. Nunca en el front, logs, respuestas ni issues.
 
-- `supabaseAdmin` solo en repositories de tablas propias y en `admin.repository.js` para lectura paginada de cuentas Auth protegida por superadmin. Para datos de ¿Cómo Votó? usar `supabase` (pública).
+- `supabaseAdmin` solo en repositories de tablas propias, `admin.repository.js` para lectura de cuentas del backoffice y `participantes.repository.js` para lookup interno por dueños. Para datos de ¿Cómo Votó? usar `supabase` (pública).
 
 - Toda entrada (params, query, body) pasa por `validate()` con zod. No leer `req.query` / `req.body` crudos en controllers: usar `req.valid.*`.
 
@@ -361,9 +379,9 @@ Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NO
 
 6. Actualizar la tabla de endpoints de este archivo y del README.
 
-### Limitación existente del guardado de votos
+### Mutaciones atómicas
 
-El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el borrado y el upsert en operaciones independientes. No es una transacción: si falla la escritura después de borrar, los votos anteriores ya fueron eliminados. La actualización de origen y la lectura final también son operaciones separadas. Este refactor conserva esa secuencia y propaga los errores; resolver la atomicidad queda para una tarea específica de base de datos.
+El modo replace, sus votos y el origen se guardan en una transacción mediante poroteo_mutar. Si falla, se revierte toda la operación. La RPC comprueba permisos y versión bajo bloqueo.
 
 ## 8. Roadmap
 
@@ -373,7 +391,7 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 
 3. **Correcciones de organizaciones:** tabla con trazabilidad (quién cambió qué voto y por qué).
 
-4. Autenticación implementada con Supabase Auth (`/api/auth/*`). Poroteos privados por `user_id` implementados. `autor` sigue descriptivo. Migración local compatible con el esquema preparado; no aplicada al remoto.
+4. Autenticación implementada con Supabase Auth (`/api/auth/*`). Poroteos colaborativos con publicación y membresías implementados. `autor` sigue descriptivo. Migraciones exactas ya aplicadas en remoto, copiadas localmente sin ejecutarlas.
 
 5. **Senado:** cargar senadores, `camara='senadores'` en poroteos (quórum 37 de 72). Generalizar `diputado_id` → `legislador_id`.
 
@@ -390,3 +408,28 @@ El modo `replace` valida primero el poroteo y los diputados, pero ejecuta el bor
 - El PDF se procesa para extraer texto; la guía declara que el archivo original no se guarda. No prometas almacenamiento permanente del PDF sin comprobar una implementación que lo haga.
 
 Documento adaptado del CLAUDE.md proporcionado por el equipo. Se conservaron el esquema, contratos, convenciones y roadmap declarados, y se corrigió el formato Markdown para su uso como AGENTS.md. Referencia de la convención: https://developers.openai.com/cookbook/examples/codex/iterating-development-workflows-with-codex
+
+## Colaboración y publicación
+
+Las rutas privadas /api/poroteos requieren sesión y membresía en poroteo_usuarios.
+user_id conserva únicamente al creador original; no autoriza ni transfiere permisos.
+Dueños y colaboradores editan contenido y votos. Solo dueños administran participantes,
+publican y eliminan. Todo miembro puede salir si queda otro dueño. Un ajeno recibe 404.
+El backoffice superadmin conserva únicamente consulta global.
+
+Todas las mutaciones posteriores a crear requieren version y usan poroteo_mutar
+atómicamente, con actor obtenido exclusivamente de la sesión. Un 409 no se reintenta.
+La creación es privada; el trigger agrega al primer dueño y el backend recarga la versión.
+Lecturas públicas independientes sin sesión: /api/poroteos-publicos y /:id.
+No exponen cuentas, miembros, metadata ni campos internos. Todas llevan no-store.
+Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-colaborativos.md).
+
+| Método | Ruta nueva                     | Contrato                        |
+| ------ | ------------------------------ | ------------------------------- |
+| GET    | /poroteos-publicos             | Listado anónimo paginado        |
+| GET    | /poroteos-publicos/:id         | Detalle público de solo lectura |
+| GET    | /poroteos/:id/miembros         | Solo dueño; miembros y versión  |
+| POST   | /poroteos/:id/miembros         | version, email y rol            |
+| PATCH  | /poroteos/:id/miembros/:userId | version y rol                   |
+| DELETE | /poroteos/:id/miembros/:userId | version                         |
+| POST   | /poroteos/:id/salir            | version                         |

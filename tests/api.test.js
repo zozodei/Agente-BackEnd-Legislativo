@@ -175,7 +175,7 @@ describe('Poroteos', () => {
   it('PUT /:id/votos valida los tipos de voto', async () => {
     const res = await request(app)
       .put(`/api/poroteos/${UUID}/votos`)
-      .send({ votos: [{ diputadoId: 1, voto: 'QUIZAS' }] });
+      .send({ version: 1, votos: [{ diputadoId: 1, voto: 'QUIZAS' }] });
     expect(res.status).toBe(400);
   });
 
@@ -195,11 +195,12 @@ describe('Poroteos', () => {
     poroteos.saveVotos.mockResolvedValue({ id: UUID, votos: [] });
     const res = await request(app)
       .put(`/api/poroteos/${UUID}/votos`)
-      .send({ votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
+      .send({ version: 1, votos: [{ diputadoId: 1, voto: 'AFIRMATIVO' }] });
     expect(res.status).toBe(200);
     expect(poroteos.saveVotos).toHaveBeenCalledWith(
       UUID,
       {
+        version: 1,
         modo: 'merge',
         votos: [{ diputadoId: 1, voto: 'AFIRMATIVO', origen: 'manual' }],
       },
@@ -209,7 +210,7 @@ describe('Poroteos', () => {
 
   it('DELETE responde 204', async () => {
     poroteos.deletePoroteo.mockResolvedValue();
-    const res = await request(app).delete(`/api/poroteos/${UUID}`);
+    const res = await request(app).delete(`/api/poroteos/${UUID}`).send({ version: 1 });
     expect(res.status).toBe(204);
   });
 });
