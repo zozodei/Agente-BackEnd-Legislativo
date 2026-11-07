@@ -1,7 +1,7 @@
 class CvBloque {
-    id;
-    nombre;
-    coalicion;
+  id;
+  nombre;
+  coalicion;
 }
 
 export default CvBloque;

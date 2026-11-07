@@ -1,6 +1,6 @@
 class CvProvincia {
-    id;
-    nombre;
+  id;
+  nombre;
 }
 
 export default CvProvincia;
