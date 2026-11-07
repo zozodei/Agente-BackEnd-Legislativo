@@ -300,3 +300,14 @@ SUPABASE_JWT_ISSUER (por defecto SUPABASE_URL/auth/v1). No modificar .env real.
 [Auditoría, contrato, límites y configuraciones pendientes](docs/seguridad.md).
 Desplegar ambos repositorios juntos y verificar cookies en los dominios reales.
 No se modificó Supabase remoto.
+
+Logout en modo cookie también funciona si falta o venció el access token: borra
+ambas cookies y, si existe refresh cookie, usa `refreshSession` y cierra únicamente
+esa sesión con alcance `local`. No entrega los tokens renovados al frontend ni usa
+Bearer/body como alternativa. Sin cookies responde 204; un fallo de credenciales,
+red o proveedor conserva el error y no permite asegurar revocación remota, aunque
+la respuesta expire las cookies. El frontend conserva su contrato existente.
+
+La extracción PDF responde al terminar o alcanzar 8 segundos, pero cada worker
+sigue ocupando uno de los dos cupos hasta su evento `exit`. Mensajes, errores,
+timeouts y promesas de `terminate()` no liberan cupos por anticipado ni duplicados.

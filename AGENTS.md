@@ -447,11 +447,22 @@ no simple (también login y multipart); CORS solo no alcanza.
 `X-Expected-User` es una precondición UUID opcional para rechazar cambios de cuenta
 entre pestañas; no concede permisos ni sustituye al actor obtenido de getUser.
 
+Logout cookie borra ambas cookies antes de validar sus credenciales. Si hay refresh
+cookie, selecciona exclusivamente esa sesión: llama refreshSession y revoca con el
+JWT recién emitido mediante auth.admin.signOut(jwt, 'local'), usando clave pública.
+Ignora access antiguo, Bearer y body; si falla el refresh no intenta cerrar otra
+sesión. No devuelve ni instala los tokens renovados. Sin cookies responde 204;
+errores de credenciales/proveedor conservan 401/429/502 con cookies expiradas.
+Sin respuesta de red o proveedor no se garantiza revocación. Ver docs/autenticacion.md.
+
 Auth verifica getClaims oficial, issuer/audience/exp/sub y getUser actual; no
 decodificar para autorizar. TRUST_PROXY vacío por defecto, configurar solo IP/CIDR
 confiables. PDF: firma y parser, worker 8 s/300 páginas/500000 caracteres, máximo
 2 workers por proceso; 5 cargas/min/IP y cuenta. Lookup de participantes tiene
 10/min/IP y cuenta. No registrar query strings ni objetos crudos de error.
+El cupo de PDF se libera una sola vez al recibir exit, nunca al resolver/rechazar
+la extracción ni al pedir/completar terminate(). Si falla el constructor sin crear
+worker, se devuelve esa reserva. Un terminate fallido mantiene el cupo hasta exit.
 
 Zod 4.6.7, fuentes usa z.record(z.string(), z.unknown()). Todas las respuestas
 API no-store. No cambiar SQL históricos. Evidencia y pendientes (incluida ausencia

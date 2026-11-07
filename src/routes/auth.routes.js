@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import * as auth from '../controllers/auth.controller.js';
 import { validate } from '../middlewares/validate.js';
-import { authToken } from '../middlewares/authToken.js';
+import { authToken, logoutTokens } from '../middlewares/authToken.js';
 import { authLimiter } from '../middlewares/rateLimit.js';
 import { loginBody, refreshBody, registroBody } from '../validators/auth.validator.js';
 import { readCookie, REFRESH_COOKIE, clearSessionCookies } from '../middlewares/sessionSecurity.js';
@@ -40,7 +40,7 @@ router.post(
     if (req.cookieSession) clearSessionCookies(res);
     next();
   },
-  authToken,
+  logoutTokens,
   auth.logout,
 );
 

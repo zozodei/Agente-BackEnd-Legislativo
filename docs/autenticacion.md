@@ -86,8 +86,40 @@ el proveedor devuelve explícitamente el error de duplicado.
 `me` valida el access token con `getClaims`, emisor/audiencia/expiración y `getUser`, sin decodificar un JWT y confiar en sus
 campos sin verificación. Logout usa `auth.admin.signOut(jwt, 'local')`, el mismo
 método que `signOut` utiliza internamente en el SDK instalado, con cliente público
-y JWT explícito; no usa `supabaseAdmin`, no renueva tokens ni cierra otras sesiones.
-El refresh queda revocado; el access token puede seguir válido hasta expirar.
+y JWT explícito; no usa `supabaseAdmin` ni cierra otras sesiones. En modo Bearer
+se conserva el JWT explícito y obligatorio; en modo cookie se aplica el flujo siguiente.
+
+### Logout cookie con access vencido o ausente
+
+Después de comprobar CSRF, `POST /auth/logout` expira ambas cookies antes de
+validar credenciales o llamar al proveedor, también al responder con error.
+Si existe refresh cookie, esa credencial selecciona la sesión: `refreshSession`
+la valida contra el proveedor configurado y obtiene un access token vigente;
+`auth.admin.signOut(accessTokenNuevo, 'local')` revoca esa sesión. Ambos pasos usan
+clientes públicos aislados. No se decodifica el JWT anterior para identificar una
+cuenta, no se usan credenciales del body o Authorization como alternativa y no se
+devuelven ni instalan cookies con los tokens nuevos. Si las dos cookies refieren
+a sesiones diferentes, se usa exclusivamente la del refresh; nunca se cierra la
+del access anterior. Un refresh rechazado tampoco habilita ese fallback.
+
+Sin refresh pero con access se mantiene signOut local; si ese access venció no
+hay una credencial vigente para garantizar revocación y se conserva el 401. Sin
+ambas cookies responde 204 idempotente, sin llamadas a Auth. Refresh malformado o
+rechazado devuelve 401; limitación del proveedor 429; red, proveedor o respuesta
+incompleta 502. Todos esos resultados expiran ambas cookies. CSRF inválido sigue
+rechazándose antes de tocar sesión/cookies para evitar logout forzado entre sitios.
+
+Si falla la renovación o la revocación, no se informa éxito remoto. En particular,
+si el proveedor rota el refresh pero falla después, no es posible recuperar desde
+el navegador los tokens nuevos: no se exponen para reintentar. Si se corta la red
+antes de recibir la respuesta, tampoco se garantiza el borrado de cookies del
+navegador. El frontend borra su estado local aun cuando falle logout. El scope
+local conserva otras sesiones de esa cuenta y de otras cuentas. Un access token
+copiado puede seguir válido hasta expirar incluso tras revocar el refresh.
+
+Regresiones: `tests/logoutCookie.test.js` recorre las capas HTTP con Auth simulado;
+`tests/authClient.test.js` comprueba refresh y signOut local con el SDK instalado
+y transporte falso. No se escribieron sesiones ni usuarios en Supabase real.
 
 ## Arquitectura y comprobación
 

@@ -24,7 +24,7 @@ export async function me(req, res) {
 
 export async function logout(req, res) {
   try {
-    await authService.logout(req.valid.auth.accessToken);
+    await authService.logout(req.valid.auth.accessToken, req.valid.auth.refreshToken);
   } finally {
     if (req.cookieSession) clearSessionCookies(res);
   }

@@ -64,6 +64,13 @@ export async function getUsuario(accessToken) {
   return toUsuarioDTO(data.user, false);
 }
 
-export async function logout(accessToken) {
-  await authRepository.logout(accessToken);
+export async function logout(accessToken, refreshToken) {
+  if (refreshToken) {
+    // El proveedor valida y rota la credencial de ESA sesión. No decodificar el
+    // access vencido ni usarlo como alternativa si el refresh es rechazado.
+    const data = await authRepository.refresh(refreshToken);
+    accessToken = toSesionDTO(data?.session).accessToken;
+  }
+  // Sin cookies, logout es idempotente. Bearer mantiene su validación obligatoria.
+  if (accessToken) await authRepository.logout(accessToken);
 }

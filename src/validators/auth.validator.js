@@ -19,6 +19,15 @@ export const loginBody = z.object({
 });
 
 export const refreshBody = z.object({ refreshToken: z.string().min(1).max(8192) });
+export const cookieLogoutTokens = z.object({
+  refreshToken: refreshBody.shape.refreshToken.optional(),
+  accessToken: z
+    .string()
+    .min(1)
+    .max(16384)
+    .regex(/^[^\s]+$/)
+    .optional(),
+});
 // Precondición opcional del navegador: solo permite rechazar un cambio de cuenta.
 export const expectedUserHeader = z.string().uuid().optional();
 

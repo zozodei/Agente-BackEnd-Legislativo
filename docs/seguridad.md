@@ -109,7 +109,14 @@ necesitarían coordinación distribuida adicional. La deduplicación del backend
 por proceso y solo mientras la petición está en vuelo, sin persistir secretos.
 
 Logout elimina cookies aunque Auth devuelva un error cuando la respuesta llega;
-el frontend siempre borra datos locales inmediatamente. Si no hay red no puede
+si hay refresh cookie, obtiene un JWT vigente con `refreshSession` y revoca
+exclusivamente esa sesión con `signOut(jwtNuevo, 'local')`, aunque el access falte
+o haya vencido. El refresh es la única credencial seleccionada cuando está presente:
+no se confía en un access decodificado ni se recurre al Bearer/body/access antiguo
+si falla la renovación. Nunca se devuelven ni se instalan los tokens nuevos.
+Sin cookies responde 204 sin consultar Auth; con un refresh inválido conserva 401,
+con limitación 429, y con fallo de red/proveedor 502, siempre expirando cookies.
+El frontend siempre borra datos locales inmediatamente. Si no hay red no puede
 garantizarse el borrado remoto de cookies ni la revocación. `signOut(jwt, 'local')`
 revoca refresh de esa sesión; un access token copiado puede seguir válido hasta
 expirar. No se promete revocación inmediata ni validación directa de auth.sessions.
@@ -142,6 +149,12 @@ soportado. OAuth futuro debe implementarse en servidor con PKCE/state y cookies.
 5. Los rate limits, el tope de PDF y la deduplicación son por proceso; escalar a
    varias réplicas requiere un almacén/coordinador compartido. Los workers limitan
    heap V8 y tiempo, no toda memoria nativa: agregar límites del contenedor.
+   El cupo sigue ocupado hasta `exit` aunque ya se haya respondido o esté pendiente
+   `terminate()`. Solo exit libera una vez; error, message, timeout y resolve/reject
+   de terminate no descuentan cupos. Si terminate falla y el worker no sale,
+   permanece ocupado para impedir admitir un tercero. Un constructor fallido que
+   no creó worker devuelve su reserva. Las pruebas usan terminaciones diferidas
+   y eventos repetidos para verificar el máximo de dos workers vivos.
 6. La CSP de Helmet protege respuestas API; no configura el hosting estático.
    Probar CSP en Report-Only en el host del frontend antes de imponerla, ajustando
    `connect-src` a la API, `img-src` a fotos/Wikimedia, fuentes self-hosted y estilos
@@ -156,15 +169,20 @@ soportado. OAuth futuro debe implementarse en servidor con PKCE/state y cookies.
 Tests aislados en ambos repositorios, sin cargas ni ataques al proveedor. Backend:
 HTTP → repository con dobles; firma ES256 con SDK y JWKS/fetch locales; emisor,
 audiencia y expiración; identidad/roles/actor; colaboración y DTO público; CSRF;
-cookies producción; rate limit PDF por cuenta; PDF válido/corrupto y workers con
-timeout/concurrencia simulados. Frontend: renovación única, fallo temporal,
+cookies producción; logout con refresh aun sin access vigente, errores y aislamiento
+de credenciales; rate limit PDF por cuenta; PDF válido/corrupto y workers con
+timeout/concurrencia simulados. Se detectaron y corrigieron dos regresiones de la
+primera implementación: `authToken` impedía alcanzar logout sin access y el
+`finally` de PDF descontaba workers antes de `exit`. Las pruebas nuevas mantienen
+`terminate()` pendiente, simulan resolve/reject y eventos tardíos/repetidos, y
+comprueban el máximo de dos workers vivos. Frontend: renovación única, fallo temporal,
 limpieza, cambio de cuenta/pestaña, conflictos, permisos, público y XSS literal.
 
 Resultados finales locales:
 
 | Comprobación           | Backend                  | Frontend                               |
 | ---------------------- | ------------------------ | -------------------------------------- |
-| `npm test`             | 201 pruebas, 13 archivos | 96 pruebas, 9 archivos (Vitest 4.1.12) |
+| `npm test`             | 223 pruebas, 14 archivos | 96 pruebas, 9 archivos (Vitest 4.1.12) |
 | `npm run lint`         | Correcto                 | Correcto                               |
 | `npm run format:check` | Correcto                 | Correcto                               |
 | `npm run typecheck`    | No tiene ese script      | Correcto                               |

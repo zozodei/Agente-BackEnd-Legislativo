@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createAuthClient } from '../src/config/supabaseAuth.js';
+import { logout } from '../src/services/auth.service.js';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -48,4 +49,42 @@ it('el SDK real usa clave pública y mantiene cada sesión aislada, con transpor
   expect(new Headers(requests[2].options.headers).get('authorization')).toBe(
     'Bearer access-uno@example.org',
   );
+});
+
+it('logout con refresh usa el SDK real y scope local con transporte aislado', async () => {
+  const requests = [];
+  // Otra sesión de la misma cuenta y otra cuenta deben permanecer intactas.
+  const sessions = new Set(['sesion-a', 'sesion-a-otra', 'sesion-b']);
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url, options) => {
+      const target = new URL(String(url));
+      const headers = new Headers(options.headers);
+      expect(target.origin).toBe('https://test-project.supabase.co');
+      expect(headers.get('apikey')).toBe('sb_publishable_test');
+      requests.push({ target, headers });
+      if (target.pathname.endsWith('/token')) {
+        expect(target.searchParams.get('grant_type')).toBe('refresh_token');
+        expect(JSON.parse(options.body)).toEqual({ refresh_token: 'refresh-sesion-a' });
+        return Response.json({
+          access_token: 'access-nuevo-sesion-a',
+          refresh_token: 'refresh-rotado-sesion-a',
+          expires_in: 3600,
+          expires_at: Math.floor(Date.now() / 1000) + 3600,
+          token_type: 'bearer',
+          user: { id: 'cuenta-a', email: 'a@example.org', aud: 'authenticated', user_metadata: {} },
+        });
+      }
+      if (target.pathname.endsWith('/logout')) {
+        expect(target.searchParams.get('scope')).toBe('local');
+        expect(headers.get('authorization')).toBe('Bearer access-nuevo-sesion-a');
+        sessions.delete('sesion-a');
+        return new Response(null, { status: 204 });
+      }
+      throw new Error('Transporte inesperado: no se permite red real');
+    }),
+  );
+  await logout(undefined, 'refresh-sesion-a');
+  expect(requests).toHaveLength(2);
+  expect(sessions).toEqual(new Set(['sesion-a-otra', 'sesion-b']));
 });
