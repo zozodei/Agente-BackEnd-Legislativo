@@ -123,10 +123,15 @@ expirar. No se promete revocación inmediata ni validación directa de auth.sess
 HttpOnly dificulta extraer los tokens, pero un XSS activo aún puede operar usando
 el navegador: no sustituye prevención de XSS ni aislamiento del contenido.
 
-El frontend contenía componentes OAuth aunque el backend local no implementa esas
-rutas. No se implementó Google: el callback ya no importa tokens del fragmento a
-localStorage y muestra un mensaje explícito. Email/password sigue siendo el flujo
-soportado. OAuth futuro debe implementarse en servidor con PKCE/state y cookies.
+Google se implementa en el servidor con PKCE (S256). `GET /auth/google` valida que
+`redirectTo` sea `/auth/callback` de un origen de `CORS_ORIGINS` (sin redirección
+abierta) y guarda el verifier en una cookie HttpOnly, SameSite=Lax, de 10 minutos y
+ruta `/api/auth/google`; nunca viaja en el cuerpo. Supabase vuelve al front con
+`?code=` y `POST /auth/google/callback` lo canjea con ese verifier (un solo intento:
+la cookie se borra). Un código robado o inyectado no sirve sin la cookie del mismo
+navegador, lo que también impide el login CSRF. El POST pasa por el control de Origin.
+El callback nunca importa tokens del fragmento. En Supabase, "Redirect URLs" debe
+incluir `<origen>/auth/callback` de cada entorno.
 
 ## Pendientes de configuración y límites
 

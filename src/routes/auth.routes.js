@@ -3,7 +3,13 @@ import * as auth from '../controllers/auth.controller.js';
 import { validate } from '../middlewares/validate.js';
 import { authToken, logoutTokens } from '../middlewares/authToken.js';
 import { authLimiter } from '../middlewares/rateLimit.js';
-import { loginBody, refreshBody, registroBody } from '../validators/auth.validator.js';
+import {
+  googleCallbackBody,
+  googleInicioQuery,
+  loginBody,
+  refreshBody,
+  registroBody,
+} from '../validators/auth.validator.js';
 import { readCookie, REFRESH_COOKIE, clearSessionCookies } from '../middlewares/sessionSecurity.js';
 import { AppError } from '../utils/AppError.js';
 
@@ -16,6 +22,14 @@ router.use('/auth', (_req, res, next) => {
 });
 router.post('/auth/registro', authLimiter, validate({ body: registroBody }), auth.registrar);
 router.post('/auth/login', authLimiter, validate({ body: loginBody }), auth.login);
+// Google con PKCE: el verifier viaja en cookie HttpOnly, nunca por el front.
+router.get('/auth/google', authLimiter, validate({ query: googleInicioQuery }), auth.googleInicio);
+router.post(
+  '/auth/google/callback',
+  authLimiter,
+  validate({ body: googleCallbackBody }),
+  auth.googleCallback,
+);
 router.post(
   '/auth/refresh',
   authLimiter,

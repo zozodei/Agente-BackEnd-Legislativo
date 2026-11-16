@@ -1,5 +1,13 @@
 import * as authService from '../services/auth.service.js';
-import { clearSessionCookies, respondAuth } from '../middlewares/sessionSecurity.js';
+import {
+  clearPkceCookie,
+  clearSessionCookies,
+  PKCE_COOKIE,
+  readCookie,
+  respondAuth,
+  setPkceCookie,
+} from '../middlewares/sessionSecurity.js';
+import { AppError } from '../utils/AppError.js';
 
 export async function registrar(req, res) {
   respondAuth(req, res, await authService.registrar(req.valid.body), 201);
@@ -29,4 +37,24 @@ export async function logout(req, res) {
     if (req.cookieSession) clearSessionCookies(res);
   }
   res.status(204).end();
+}
+
+export async function googleInicio(req, res) {
+  const { url, codeVerifier } = await authService.iniciarGoogle(req.valid.query.redirectTo);
+  setPkceCookie(res, codeVerifier);
+  res.json({ data: { url } });
+}
+
+export async function googleCallback(req, res) {
+  const codeVerifier = readCookie(req, PKCE_COOKIE);
+  clearPkceCookie(res); // un solo intento por inicio
+  if (!codeVerifier) {
+    throw new AppError(
+      400,
+      'OAUTH_FAILED',
+      'No se pudo completar el ingreso con Google. Volvé a intentarlo desde el mismo navegador.',
+    );
+  }
+  const { code } = req.valid.body;
+  respondAuth(req, res, await authService.completarGoogle({ code, codeVerifier }));
 }
