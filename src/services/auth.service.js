@@ -1,4 +1,5 @@
 import * as authRepository from '../repositories/auth.repository.js';
+import { createHash, randomBytes } from 'node:crypto';
 import { env } from '../config/env.js';
 import { AppError } from '../utils/AppError.js';
 import { resolverRol } from './roles.service.js';
@@ -73,4 +74,52 @@ export async function logout(accessToken, refreshToken) {
   }
   // Sin cookies, logout es idempotente. Bearer mantiene su validación obligatoria.
   if (accessToken) await authRepository.logout(accessToken);
+}
+
+/* ── Google (OAuth de Supabase Auth con PKCE) ─────────────────────────── */
+
+/**
+ * Solo se vuelve a /auth/callback de un origen permitido (CORS_ORIGINS):
+ * así el endpoint no sirve como redirección abierta.
+ */
+function validarRedirectGoogle(redirectTo) {
+  let url;
+  try {
+    url = new URL(redirectTo);
+  } catch {
+    url = null;
+  }
+  if (
+    !url ||
+    !env.CORS_ORIGINS.includes(url.origin) ||
+    url.pathname !== '/auth/callback' ||
+    url.search ||
+    url.hash
+  ) {
+    throw AppError.badRequest('redirectTo no permitido');
+  }
+  return url.href;
+}
+
+/** Devuelve la URL de Google y el verifier PKCE, que el controller guarda en cookie HttpOnly. */
+export async function iniciarGoogle(redirectTo) {
+  const destino = validarRedirectGoogle(redirectTo);
+  if (!(await authRepository.googleHabilitado())) {
+    throw new AppError(
+      503,
+      'GOOGLE_DISABLED',
+      'El ingreso con Google todavía no está habilitado. Ingresá con email y contraseña.',
+    );
+  }
+  const codeVerifier = randomBytes(48).toString('base64url'); // 64 caracteres (RFC 7636)
+  const codeChallenge = createHash('sha256').update(codeVerifier).digest('base64url');
+  return {
+    url: authRepository.urlAutorizarGoogle({ redirectTo: destino, codeChallenge }),
+    codeVerifier,
+  };
+}
+
+/** Canjea el código que trae Google por la sesión. Sin el verifier de esta cuenta no sirve. */
+export async function completarGoogle({ code, codeVerifier }) {
+  return toAuthDTO(await authRepository.canjearCodigoGoogle({ code, codeVerifier }));
 }

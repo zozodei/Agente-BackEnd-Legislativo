@@ -36,3 +36,8 @@ export const bearerHeader = z
   .max(16384)
   .regex(/^Bearer [^\s]+$/i)
   .transform((value) => value.slice(7));
+
+export const googleInicioQuery = z.object({ redirectTo: z.string().trim().min(1).max(2048) });
+export const googleCallbackBody = z.object({
+  code: z.string().trim().min(1, 'Falta el código de Google').max(500),
+});

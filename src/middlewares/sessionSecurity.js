@@ -64,3 +64,15 @@ export function sessionSecurity(req, _res, next) {
   }
   return next();
 }
+
+/* Verifier PKCE de Google: vive 10 minutos, solo para /api/auth/google. */
+export const PKCE_COOKIE = `${prefix}poroteo_pkce`;
+const pkceOptions = () => ({ ...cookieOptions('/api/auth/google'), sameSite: 'lax' });
+
+export function setPkceCookie(res, codeVerifier) {
+  res.cookie(PKCE_COOKIE, codeVerifier, { ...pkceOptions(), maxAge: 10 * 60_000 });
+}
+
+export function clearPkceCookie(res) {
+  res.clearCookie(PKCE_COOKIE, pkceOptions());
+}
