@@ -11,6 +11,7 @@ vi.mock('../src/config/env.js', async (original) => {
       ...actual.env,
       RATE_LIMIT_WRITE_MAX: 10000,
       SUPERADMIN_EMAILS: ['zoe@acquistapace.com.ar'],
+      SUPERADMIN_USER_IDS: ['11111111-1111-4111-8111-111111111111'],
     },
   };
 });

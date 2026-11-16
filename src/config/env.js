@@ -67,6 +67,20 @@ const envSchema = z
             .filter(Boolean),
         ),
       ),
+    // UUID de Supabase Auth de cada superadmin. Ausente o vacía: nadie es superadmin.
+    // Ata el rol a cuentas ya existentes: registrar de nuevo un email no lo hereda,
+    // aunque Supabase tenga "Confirm email" desactivado y lo autoconfirme.
+    SUPERADMIN_USER_IDS: z
+      .string()
+      .default('')
+      .transform((value) =>
+        value
+          .split(',')
+          .map((id) => id.trim().toLowerCase())
+          .filter(Boolean),
+      )
+      .pipe(z.array(z.string().uuid('SUPERADMIN_USER_IDS debe contener UUID separados por coma')))
+      .transform((ids) => Object.freeze(ids)),
   })
   .superRefine((config, ctx) => {
     if (config.SESSION_SAME_SITE === 'none' && config.NODE_ENV !== 'production') {

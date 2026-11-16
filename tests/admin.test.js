@@ -2,9 +2,13 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const emails = vi.hoisted(() => []);
+const ids = vi.hoisted(() => []);
 vi.mock('../src/config/env.js', async (original) => {
   const actual = await original();
-  return { ...actual, env: { ...actual.env, SUPERADMIN_EMAILS: emails } };
+  return {
+    ...actual,
+    env: { ...actual.env, SUPERADMIN_EMAILS: emails, SUPERADMIN_USER_IDS: ids },
+  };
 });
 vi.mock('../src/config/supabaseAuth.js', () => ({ createAuthClient: vi.fn() }));
 vi.mock('../src/config/supabase.js', () => ({
@@ -45,6 +49,7 @@ function autorizado(path) {
 beforeEach(() => {
   vi.resetAllMocks();
   emails.splice(0, emails.length, ...LISTA);
+  ids.splice(0, ids.length, UUID);
   getUser = vi.fn().mockResolvedValue({ data: { user: identity() }, error: null });
   createAuthClient.mockReturnValue({
     auth: {
@@ -139,6 +144,25 @@ describe('Guard en todo /api/admin', () => {
       expect((await autorizado('/api/admin/cuentas')).status).toBe(403);
     },
   );
+  it('email habilitado y confirmado sin UUID autorizado no accede (cuenta re-registrada)', async () => {
+    // Supabase con "Confirm email" desactivado autoconfirma: el email no prueba propiedad.
+    // El UUID autorizado es el de la cuenta original; la sesión es de otra cuenta.
+    ids.splice(0, ids.length, '0f0e0d0c-0b0a-4908-8706-050403020100');
+    expect((await autorizado('/api/admin/cuentas')).status).toBe(403);
+    expect((await autorizado('/api/auth/me')).body.data.rol).toBe('usuario');
+  });
+  it('UUID autorizado no basta sin email habilitado', async () => {
+    getUser.mockResolvedValue({ data: { user: identity('otra@example.org') } });
+    expect((await autorizado('/api/admin/cuentas')).status).toBe(403);
+  });
+  it('lista de UUID vacía deniega aunque el email esté configurado', async () => {
+    ids.splice(0);
+    expect((await autorizado('/api/admin/cuentas')).status).toBe(403);
+  });
+  it('normaliza mayúsculas del UUID configurado', async () => {
+    ids.splice(0, ids.length, UUID.toUpperCase());
+    expect((await autorizado('/api/admin/cuentas')).status).toBe(200);
+  });
   it('lista vacía deniega incluso si metadata afirma ser admin', async () => {
     emails.splice(0);
     expect((await autorizado('/api/admin/cuentas')).status).toBe(403);

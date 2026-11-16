@@ -6,7 +6,13 @@ Agregar al `.env` exclusivo del backend (sin prefijo `VITE_`):
 
 ```env
 SUPERADMIN_EMAILS=augustraver@gmail.com,zoe@acquistapace.com.ar,lucas.ioel.roitman@gmail.com
+SUPERADMIN_USER_IDS=<uuid-1>,<uuid-2>,<uuid-3>
 ```
+
+`SUPERADMIN_USER_IDS` lleva el UUID de cada una de esas cuentas (Supabase →
+Authentication → Users). Se exigen ambos: email habilitado y confirmado **y** UUID
+autorizado. Esto evita que alguien registre un email habilitado que todavía no
+tiene cuenta y obtenga el rol si **Confirm email** está desactivado.
 
 Reiniciar el backend. La variable está documentada en `.env.example`, pero no se
 sobrescribió `.env`. Si está ausente o vacía se deniega superadmin a todos.
