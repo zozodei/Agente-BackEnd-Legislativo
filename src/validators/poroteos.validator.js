@@ -97,3 +97,6 @@ export const putVotosBody = z
     message: 'Hay diputados repetidos en la lista de votos',
     path: ['votos'],
   });
+
+/** Body vacío (o ausente) para acciones sin parámetros, como estimar con IA. */
+export const emptyBody = z.object({}).strict().optional().default({});

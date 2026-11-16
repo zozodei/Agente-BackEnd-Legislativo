@@ -36,7 +36,10 @@ vi.mock('../src/services/poroteos.service.js', () => ({
   deletePoroteo: vi.fn(),
 }));
 
+vi.mock('../src/services/prediccion.service.js', () => ({ predecirPoroteo: vi.fn() }));
+
 const diputados = await import('../src/services/diputados.service.js');
+const prediccion = await import('../src/services/prediccion.service.js');
 const votaciones = await import('../src/services/votaciones.service.js');
 const poroteos = await import('../src/services/poroteos.service.js');
 const { AppError } = await import('../src/utils/AppError.js');
@@ -206,6 +209,24 @@ describe('Poroteos', () => {
       },
       '11111111-1111-4111-8111-111111111111',
     );
+  });
+
+  it('POST /:id/prediccion devuelve la propuesta sin body', async () => {
+    prediccion.predecirPoroteo.mockResolvedValue({ poroteoId: UUID, votos: [] });
+    const res = await request(app).post(`/api/poroteos/${UUID}/prediccion`);
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(prediccion.predecirPoroteo).toHaveBeenCalledWith(
+      UUID,
+      '11111111-1111-4111-8111-111111111111',
+    );
+  });
+
+  it('POST /:id/prediccion rechaza campos en el body', async () => {
+    const res = await request(app)
+      .post(`/api/poroteos/${UUID}/prediccion`)
+      .send({ modelo: 'otro' });
+    expect(res.status).toBe(400);
   });
 
   it('DELETE responde 204', async () => {

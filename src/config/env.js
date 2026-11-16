@@ -81,8 +81,33 @@ const envSchema = z
       )
       .pipe(z.array(z.string().uuid('SUPERADMIN_USER_IDS debe contener UUID separados por coma')))
       .transform((ids) => Object.freeze(ids)),
+    // Servicio Python de predicción (ml/). Vacío: se usa el predictor simulado fuera de
+    // producción; en producción el endpoint responde 503 hasta configurarlo.
+    PREDICTOR_URL: z
+      .string()
+      .default('')
+      .refine((v) => {
+        if (!v) return true;
+        try {
+          return ['http:', 'https:'].includes(new URL(v).protocol);
+        } catch {
+          return false;
+        }
+      }, 'PREDICTOR_URL debe ser una URL http(s) (ej: http://localhost:8000)')
+      .transform((v) => v.replace(/\/+$/, '')),
+    PREDICTOR_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(60_000),
+    // "true" permite el predictor simulado (datos de mentira para probar la interfaz).
+    // Por defecto: activo fuera de producción. Nunca se permite en producción.
+    PREDICTOR_SIMULADO: z.enum(['true', 'false']).optional(),
   })
   .superRefine((config, ctx) => {
+    if (config.NODE_ENV === 'production' && config.PREDICTOR_SIMULADO === 'true') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['PREDICTOR_SIMULADO'],
+        message: 'El predictor simulado no se permite en producción',
+      });
+    }
     if (config.SESSION_SAME_SITE === 'none' && config.NODE_ENV !== 'production') {
       ctx.addIssue({
         code: 'custom',
@@ -101,7 +126,13 @@ const envSchema = z
         message: 'Producción requiere HTTPS para frontend y Supabase',
       });
     }
-  });
+  })
+  .transform((config) => ({
+    ...config,
+    PREDICTOR_SIMULADO: config.PREDICTOR_SIMULADO
+      ? config.PREDICTOR_SIMULADO === 'true'
+      : config.NODE_ENV !== 'production',
+  }));
 
 function loadEnv() {
   const parsed = envSchema.safeParse(process.env);

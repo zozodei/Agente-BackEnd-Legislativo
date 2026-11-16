@@ -69,3 +69,13 @@ export const pdfUsuarioLimiter = rateLimit({
   legacyHeaders: false,
   handler,
 });
+
+/** Estimar con IA es costoso: pocas solicitudes por usuario y por minuto. */
+export const prediccionLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 6,
+  keyGenerator: (req) => req.usuario.id,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler,
+});

@@ -1,4 +1,5 @@
 import * as poroteosService from '../services/poroteos.service.js';
+import * as prediccionService from '../services/prediccion.service.js';
 
 export async function create(req, res) {
   const poroteo = await poroteosService.createPoroteo(req.valid.body, req.file, req.usuario.id);
@@ -68,4 +69,8 @@ export async function salir(req, res) {
   res.json({
     data: await poroteosService.salirPoroteo(req.valid.params.id, req.valid.body, req.usuario.id),
   });
+}
+
+export async function predecir(req, res) {
+  res.json({ data: await prediccionService.predecirPoroteo(req.valid.params.id, req.usuario.id) });
 }

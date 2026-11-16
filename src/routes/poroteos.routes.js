@@ -7,6 +7,7 @@ import {
   participantesUsuarioLimiter,
   pdfIpLimiter,
   pdfUsuarioLimiter,
+  prediccionLimiter,
 } from '../middlewares/rateLimit.js';
 import { uploadPdf } from '../middlewares/upload.js';
 import * as poroteos from '../controllers/poroteos.controller.js';
@@ -20,6 +21,7 @@ import {
   miembroParams,
   agregarMiembroBody,
   cambiarRolBody,
+  emptyBody,
 } from '../validators/poroteos.validator.js';
 
 const router = Router();
@@ -52,6 +54,13 @@ router.put(
   '/poroteos/:id/votos',
   validate({ params: poroteoParams, body: putVotosBody }),
   poroteos.saveVotos,
+);
+// Devuelve una propuesta de votos con IA; no guarda (se guarda con PUT /votos).
+router.post(
+  '/poroteos/:id/prediccion',
+  prediccionLimiter,
+  validate({ params: poroteoParams, body: emptyBody }),
+  poroteos.predecir,
 );
 router.delete(
   '/poroteos/:id',
