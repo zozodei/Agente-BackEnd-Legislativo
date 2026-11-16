@@ -171,7 +171,13 @@ Agregar manualmente al `.env` del **backend**, que no se modificó en esta tarea
 
 ```env
 SUPERADMIN_EMAILS=augustraver@gmail.com,zoe@acquistapace.com.ar,lucas.ioel.roitman@gmail.com
+SUPERADMIN_USER_IDS=<uuid-1>,<uuid-2>,<uuid-3>
 ```
+
+`SUPERADMIN_USER_IDS` lleva el UUID de cada una de esas cuentas (Supabase →
+Authentication → Users). Se exigen ambos: email habilitado y confirmado **y** UUID
+autorizado. Esto evita que alguien registre un email habilitado que todavía no
+tiene cuenta y obtenga el rol si **Confirm email** está desactivado.
 
 Debe estar **Confirm email activado** en Supabase para verificar la propiedad de
 las direcciones antes de conceder privilegios. El código exige el indicador

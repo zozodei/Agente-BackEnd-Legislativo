@@ -252,7 +252,9 @@ Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-
 PostgreSQL/Supabase ni se persisten en metadata. `roles.service.js` resuelve el
 rol con email completo normalizado y `email_confirmed_at` del usuario devuelto
 por Supabase. Debe estar en `SUPERADMIN_EMAILS` y ser uno de los tres emails
-habilitados en el código. La variable es exclusiva del backend, vacía por defecto,
+habilitados en el código. Además, el `id` de la cuenta debe estar en `SUPERADMIN_USER_IDS`
+(UUID de Auth): así, si Supabase autoconfirma emails, registrar de nuevo un email
+habilitado no concede el rol. La variable es exclusiva del backend, vacía por defecto,
 y se carga al iniciar: cambiarla requiere reiniciar el proceso. Lista vacía no
 concede privilegios. No se modifica el `.env` real.
 
