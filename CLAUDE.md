@@ -339,6 +339,12 @@ Red corporativa con inspección HTTPS (`SELF_SIGNED_CERT_IN_CHAIN`): agregar `NO
 
 El modo replace, sus votos y el origen se guardan en una transacción mediante poroteo_mutar. Si falla, se revierte toda la operación. La RPC comprueba permisos y versión bajo bloqueo.
 
+## Modelo de predicción (`ml/`, rama `ML-TESTING`)
+
+Proyecto Python independiente del backend Node: modelo experimental de predicción de votos. No lo
+usa la API todavía. Ver [ml/README.md](ml/README.md). El dataset y los derivados **nunca** se
+commitean (`ml/.gitignore`). `ml` está en `.prettierignore` para que la CI de Node no lo revise.
+
 ## 8. Roadmap
 
 1. ✅ Poroteo manual de Diputados (este prototipo).

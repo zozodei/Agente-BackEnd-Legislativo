@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "commit": "50894c1d98bc45ca1ab127213e59d6525065b5e7",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "7bc223e2aafbdbf6e50ea243ba6ef67fe432bb069ab439fea0390795dac0bf7f"
+    },
+    "pandas-pro": {
+      "source": "Jeffallan/claude-skills",
+      "commit": "078a25cc5bfd8011459be7b91d004e900c1d02d3",
+      "sourceType": "github",
+      "skillPath": "skills/pandas-pro/SKILL.md",
+      "computedHash": "3ab6f8326c1a7228532c79f7c11af4bc8820ff7a765948ebf4d0ca29d111039f"
+    },
+    "python-testing-patterns": {
+      "source": "wshobson/agents",
+      "commit": "9c61ab243def98f72da12abd41cfcf5bcd91af9d",
+      "sourceType": "github",
+      "skillPath": "plugins/python-development/skills/python-testing-patterns/SKILL.md",
+      "computedHash": "8113c05a831d4872c9294b0df26a335c09af423ee2e23d8b9b6817b300d96796"
+    },
+    "scikit-learn": {
+      "source": "K-Dense-AI/scientific-agent-skills",
+      "commit": "ec59a29a03d5c40f73ab40878df04860bc00e876",
+      "sourceType": "github",
+      "skillPath": "skills/scikit-learn/SKILL.md",
+      "computedHash": "072badf63201170ce6ffde828585222bca78b5551cf8e02e10bb8430ab602f1b"
+    }
+  }
+}

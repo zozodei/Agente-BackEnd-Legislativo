@@ -1,0 +1,12 @@
+# Datos y artefactos: nunca se suben
+datos/
+*.zip
+*.sqlite
+*.csv
+*.parquet
+modelos/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+derivados/
