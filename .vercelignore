@@ -1,0 +1,7 @@
+# Datos pesados que la API no necesita en producción (solo usa data/modelo/*.json.gz)
+data/raw
+data/dataset
+data/modelo/evaluacion
+data/modelo/embeddings_lsa.json.gz
+supabase/local
+scripts

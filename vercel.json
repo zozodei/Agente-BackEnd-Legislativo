@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "data/modelo/{historia,lsa,modelo}.json.gz",
+      "maxDuration": 60
+    }
+  },
   "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
 }

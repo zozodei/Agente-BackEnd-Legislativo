@@ -375,3 +375,45 @@ Contrato completo y migraciones exactas: [poroteos colaborativos](docs/poroteos-
 | PATCH  | /poroteos/:id/miembros/:userId | version y rol                   |
 | DELETE | /poroteos/:id/miembros/:userId | version                         |
 | POST   | /poroteos/:id/salir            | version                         |
+
+## Poroteo con IA (rama `feature/poroteo-ia-completo`)
+
+Documentos: `DIAGNOSTICO.md`, `EVALUACION_MODELOS.md`, `DECISIONES.md`, `PROGRESO.md`,
+`GUIA_PRESENTACION.md`, `data/README.md`.
+
+```
+src/prediccion/     motor PURO (sin Express ni Supabase), mismo código para entrenar y predecir
+  proyecto.js       tema (reglas), tipo, dictamen, origen Senado, solicitante de mociones
+  gobiernos.js      presidencias y criterio de bloque oficialista
+  similitud.js      tokenizador, TF-IDF + LSA (fold-in), similitud híbrida
+  historia.js       índice en memoria del historial (sumas acumuladas por persona)
+  features.js       98 features por (proyecto, diputado). Anti-fuga: solo días anteriores
+  modelo.js         inferencia logística/GBDT + supuestos bayesianos (aplicarPosturaDeclarada)
+  explicacion.js    explicación por plantilla, solo con los factores
+  motor.js          MotorPrediccion.cargar() / predecir(entrada, diputados) → 257 predicciones
+services/prediccion.service.js   genera, guarda (RPC), ajustes, resultado
+services/explicaciones.service.js LLM opcional (clients/llm.client.js) + caché + validador
+scripts/dataset/    exportar de Supabase, construir dataset limpio, embeddings neuronales
+scripts/modelo/     lsa, historia, filas, aprendizaje (logística), gbdt, evaluar, entrenar, reporte
+scripts/supabase/   cargar datos limpios (local o prod) y réplica de origen local
+scripts/e2e/        flujo completo contra un backend corriendo
+data/               raw (export), dataset (limpio), modelo (artefactos versionados)
+supabase/local/     esquema de origen para el Supabase local (NO se aplica en producción)
+```
+
+Reglas:
+
+- Si cambian las features: correr `npm run modelo:entrenar` (y `modelo:evaluar` para el reporte)
+  y commitear `data/modelo/*.json.gz`. El test `prediccion.motor.test.js` falla si el modelo
+  no coincide con la cantidad de features.
+- `poroteo_votos` es el voto final: lo recalculan `poroteo_guardar_prediccion` y
+  `poroteo_ajustar_votos` (último ajuste vigente o predicción). `ajustes_manuales` solo agrega.
+- Tablas nuevas (migración `20261120120000_poroteo_ia.sql`): `bloques_unificados`,
+  `bloques_variantes`, `gobiernos`, `legisladores`, `historial_bloques`,
+  `votaciones_enriquecidas`, `votos_correcciones`, `proyectos` (pgvector 96), `modelos_prediccion`,
+  `predicciones`, `ajustes_manuales`, `explicaciones_cache`; vistas `votaciones` y `votos`;
+  columnas nuevas en `poroteos`: `proyecto_id`, `supuestos`, `version_modelo`, `prediccion_at`.
+- Neutralidad: las explicaciones no califican; mismo texto para todos los bloques. El frontend
+  muestra siempre el aviso "Estimación, no resultado".
+- `cv_votaciones.afirmativos/negativos/...` están corridos: usar `conteo_coaliciones.tot`
+  (`conteoDe()` en votaciones.service.js) o la vista `votaciones`.
