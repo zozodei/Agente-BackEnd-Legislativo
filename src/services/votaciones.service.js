@@ -22,13 +22,26 @@ export function porcentajes({ afirmativos, negativos, abstenciones, ausentes }) 
   };
 }
 
-export function toVotacionDTO(row) {
-  const conteo = {
+/**
+ * En cv_votaciones las columnas de conteo vienen corridas un lugar (afirmativos guarda los
+ * negativos, etc.; ver DIAGNOSTICO.md). `conteo_coaliciones.tot` = [afirm, neg, abst, aus]
+ * sí coincide con los votos individuales, así que se usa cuando está.
+ */
+export function conteoDe(row) {
+  const tot = row.conteo_coaliciones?.tot;
+  if (Array.isArray(tot) && tot.length >= 4 && tot.every((n) => Number.isInteger(n))) {
+    return { afirmativos: tot[0], negativos: tot[1], abstenciones: tot[2], ausentes: tot[3] };
+  }
+  return {
     afirmativos: row.afirmativos ?? 0,
     negativos: row.negativos ?? 0,
     abstenciones: row.abstenciones ?? 0,
     ausentes: row.ausentes ?? 0,
   };
+}
+
+export function toVotacionDTO(row) {
+  const conteo = conteoDe(row);
   return {
     id: row.id,
     titulo: row.titulo_sitio || row.titulo,
