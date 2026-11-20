@@ -19,6 +19,11 @@ export default [
     },
   },
   {
+    // Scripts de línea de comandos (dataset y modelo): imprimir el progreso es su salida.
+    files: ['scripts/**/*.mjs'],
+    rules: { 'no-console': 'off' },
+  },
+  {
     files: ['tests/**/*.js'],
     languageOptions: { globals: { ...globals.node, ...globals.vitest } },
   },
