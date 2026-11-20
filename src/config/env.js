@@ -55,6 +55,10 @@ const envSchema = z
     RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(60),
     CACHE_DIPUTADOS_MINUTOS: z.coerce.number().nonnegative().default(10),
+    // LLM opcional para redactar explicaciones. Sin clave se usan las plantillas.
+    ANTHROPIC_API_KEY: z.string().optional(),
+    LLM_MODELO: z.string().min(1).default('claude-opus-5-5'),
+    LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
     // Ausente o vacía por defecto: no concede permisos.
     SUPERADMIN_EMAILS: z
       .string()
