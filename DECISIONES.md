@@ -85,3 +85,18 @@ razonable, anotarla y seguir). Cada una dice qué se eligió, por qué y qué al
     (`supabase/local/`) y los datos reales. Supabase Branching requiere plan pago y no hay
     acceso a la base de producción desde acá (solo claves de API).
 26. **Rama `feature/poroteo-ia-completo`** en los dos repos, separada de `ML-TESTING`.
+
+## Cambios tras la primera prueba de usuario (gestación por sustitución)
+
+27. **Proyectos sin antecedentes** (similitud máxima < 0,35): se avisa en la interfaz, ninguna
+    predicción puede ser "firme" y la explicación cita las votaciones **divididas del mismo
+    tema** (p. ej. IVE 2018/2020). Se agregó bioética al tema "derechos".
+28. **No se mezcla automáticamente** con esas votaciones: en las 9 votaciones de 2023–2026 sin
+    antecedentes, mezclar bajó la accuracy de 77,7 % a 73–76 % (en los datos, los proyectos
+    nuevos suelen aprobarse por consenso). Queda como **supuesto que elige el usuario**:
+    "se vota como las votaciones divididas del mismo tema".
+29. **Supuestos de bloque, método mixto:** el reparto A/N/Abst sale del modelo con supuestos y la
+    probabilidad de ausencia del modelo sin supuestos, más la actualización por disciplina.
+    Evita que un bloque declarado "en contra" mande a sus diputados a "ausente". Prueba:
+    85,9 % accuracy, F1 0,672, ECE 0,018, error 7,8 negativos por votación.
+30. **Raíces de al menos 5 letras** en el tokenizador: "gestación" y "gestores" ya no colisionan.

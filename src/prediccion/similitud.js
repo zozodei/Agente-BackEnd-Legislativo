@@ -37,7 +37,7 @@ export function raiz(palabra) {
     'es',
     's',
   ]) {
-    if (p.length - suf.length >= 4 && p.endsWith(suf)) {
+    if (p.length - suf.length >= 5 && p.endsWith(suf)) {
       p = p.slice(0, -suf.length);
       break;
     }

@@ -98,9 +98,20 @@ export function explicarConPlantilla(f) {
     `Se estima ${VOTO_TEXTO[voto]} con una probabilidad del ${pct(f.prediccion.probabilidades[voto])}.`,
   );
 
-  // 1) Votos propios en proyectos parecidos
+  // 1) Votos propios en proyectos parecidos o, si no hay, en votaciones divididas del mismo tema
   const propios = f.similares.filter((s) => s.voto);
-  if (propios.length >= 2) {
+  const delTema = (f.divididasDelTema ?? []).filter((s) => s.voto);
+  if (f.antecedentes?.sinAntecedentes && delTema.length) {
+    const mismos = delTema.filter((s) => s.voto === voto);
+    const ej = mismos[0] ?? delTema[0];
+    oraciones.push(
+      `No hay votaciones muy parecidas a este proyecto; en las ${delTema.length} votaciones divididas del mismo tema en las que participó, ${mismos.length ? `${VOTO_VERBO[voto]} en ${mismos.length}` : `no ${VOTO_VERBO[voto]} en ninguna`}, como en «${tituloCorto(ej.titulo)}» (${fechaCorta(ej.fecha)}, ${VOTO_TEXTO[ej.voto]}).`,
+    );
+  } else if (f.antecedentes?.sinAntecedentes) {
+    oraciones.push(
+      'No hay votaciones parecidas a este proyecto ni votaciones divididas del mismo tema en las que haya participado, así que la estimación se apoya en su comportamiento general y es poco firme.',
+    );
+  } else if (propios.length >= 2) {
     const mismos = propios.filter((s) => s.voto === voto);
     const ej = mismos[0] ?? propios[0];
     const cuenta = mismos.length
@@ -138,6 +149,12 @@ export function explicarConPlantilla(f) {
   } else if (f.disciplina.base >= 10) {
     oraciones.push(
       `Acompañó la postura mayoritaria de su bloque (${bloque}) en el ${pct(f.disciplina.porcentaje)} de sus votaciones de los últimos dos años.`,
+    );
+  }
+
+  if (f.supuestos?.comoTemaDividido && oraciones.length < 4) {
+    oraciones.push(
+      'El escenario supone que este proyecto se vota como las votaciones divididas del mismo tema.',
     );
   }
 

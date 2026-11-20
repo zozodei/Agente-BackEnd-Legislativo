@@ -7,7 +7,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { DIR_MODELO, DIR_DATASET, leerJsonGz, existe } from '../dataset/comun.mjs';
 import { Historia, CLASES, diaDe } from '../../src/prediccion/historia.js';
 import { NOMBRES_FEATURES, N_FEATURES } from '../../src/prediccion/features.js';
-import { softmax, aplicarPosturaDeclarada } from '../../src/prediccion/modelo.js';
+import {
+  softmax,
+  aplicarPosturaDeclarada,
+  conAusenciaSinSupuestos,
+} from '../../src/prediccion/modelo.js';
 import { construirFilas, mayoriasReales } from './filas.mjs';
 import {
   entrenarLogistica,
@@ -221,6 +225,20 @@ function entrenarYEvaluar(nombre, entrenar) {
     const Pc = logits(modelo, conj.X, D).map((z) => softmax(z, modelo.temperatura));
     r[clave] = evaluarProbs(Pc, conj, `   └ ${clave}`);
     r[`${clave}Bayes`] = evaluarProbs(conSupuestoBayes(conj, Pc), conj, `   └ ${clave} + bayes`);
+    r[`${clave}Mixta`] = evaluarProbs(
+      conSupuestoBayes(
+        conj,
+        Pc.map((q, i) => conAusenciaSinSupuestos(q, P[i])),
+      ),
+      conj,
+      `   └ ${clave} mixta`,
+    );
+    // Solo bayes: predicción SIN features de supuestos + actualización por disciplina.
+    r[`${clave}SoloBayes`] = evaluarProbs(
+      conSupuestoBayes(conj, P),
+      conj,
+      `   └ ${clave} solo bayes`,
+    );
   }
   r.segundosEntrenamiento = (Date.now() - t) / 1000;
   r.temperatura = modelo.temperatura;

@@ -154,3 +154,23 @@ describe('confianza y textos', () => {
     expect(motor.modelo.features).toHaveLength(N_FEATURES);
   });
 });
+
+describe('proyectos sin antecedentes', () => {
+  const texto =
+    'Regulación de la gestación por sustitución de vientres: derechos de la persona gestante y de los padres de intención';
+  const r = motor.predecir({ titulo: texto }, diputados);
+
+  it('detecta el tema, avisa y nunca marca predicciones firmes', () => {
+    expect(r.proyecto.tema).toBe('derechos');
+    expect(r.antecedentes.sinAntecedentes).toBe(true);
+    expect(r.antecedentes.divididasDelTema.length).toBeGreaterThan(0);
+    expect(r.resumen.nivelConfianza.alta).toBe(0);
+  });
+
+  it('el escenario "como las divididas del tema" divide la Cámara', () => {
+    const e = motor.predecir({ titulo: texto, comoTemaDividido: true }, diputados);
+    expect(e.supuestos.comoTemaDividido).toBe(true);
+    expect(e.resumen.porVoto.NEGATIVO).toBeGreaterThan(60);
+    expect(e.predicciones[0].explicacion).toMatch(/divididas del mismo tema/);
+  });
+});

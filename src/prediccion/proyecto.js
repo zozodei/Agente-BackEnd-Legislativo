@@ -104,7 +104,7 @@ export const TEMAS = [
       'enfermedad',
       'vacun',
       'oncolog',
-      'medic',
+      '~medic',
       'sanitari',
       'covid',
       'pandemia',
@@ -221,7 +221,7 @@ export const TEMAS = [
   },
   {
     id: 'derechos',
-    nombre: 'Derechos humanos y género',
+    nombre: 'Derechos humanos, género y bioética',
     patrones: [
       'derechos humanos',
       'genero',
@@ -240,6 +240,20 @@ export const TEMAS = [
       'pueblos indigenas',
       'comunidades indigenas',
       'ley micaela',
+      // bioética y familia: temas donde la Cámara suele dividirse por convicciones
+      'gestacion',
+      'gestante',
+      'vientre',
+      'subrogacion',
+      'embarazo',
+      'reproduccion',
+      'fertilizacion',
+      'muerte digna',
+      'eutanasia',
+      'educacion sexual',
+      'union civil',
+      'filiacion',
+      'bioetic',
     ],
   },
   {

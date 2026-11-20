@@ -17,6 +17,7 @@ const supuestos = z
     tipo: z.enum(['proyecto', 'mocion']).optional(),
     dictamen: z.enum(['mayoria', 'minoria']).nullable().optional(),
     origenSenado: z.boolean().optional(),
+    comoTemaDividido: z.boolean().optional(),
     solicitanteDiputadoId: z.number().int().positive().nullable().optional(),
   })
   .strict();

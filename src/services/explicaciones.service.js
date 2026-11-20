@@ -7,7 +7,7 @@ import { llmDisponible, redactarExplicaciones } from '../clients/llm.client.js';
 import * as cacheRepository from '../repositories/explicaciones.repository.js';
 import { fechaCorta, tituloCorto, nombreBloque } from '../prediccion/explicacion.js';
 
-export const VERSION_PROMPT = 'v1';
+export const VERSION_PROMPT = 'v2';
 // Lotes chicos en paralelo: menos latencia por llamada (la salida domina el tiempo).
 const LOTE = 10;
 
@@ -19,6 +19,7 @@ Reglas obligatorias:
 - Copiá los números exactamente como vienen (por ejemplo "78 %"). No calcules números nuevos.
 - No califiques ni opines sobre el legislador, su bloque o el proyecto. Mismo tono para todos los bloques.
 - Si "pocosDatos" es true, decilo y aclarás que la confianza es baja.
+- Si "sinVotacionesParecidas" es true, decí que no hay votaciones parecidas y apoyate en las votaciones divididas del mismo tema.
 - Si hay "supuestos" del escenario, mencionalos como supuestos.
 - No uses el género del legislador: evitá "él" / "ella" y adjetivos con género.
 Devolvé un objeto { "explicaciones": [ { "id", "texto" } ] } con un elemento por cada id recibido.`;
@@ -55,6 +56,15 @@ export function datosParaLlm(f) {
     ausenteEnUltimas: `${f.ausentismo.ultimas10} de ${f.ausentismo.registradas}`,
     votacionesUltimosDosAnios: f.datos.votacionesUltimosDosAnios,
     pocosDatos: f.datos.pocosDatos,
+    sinVotacionesParecidas: Boolean(f.antecedentes?.sinAntecedentes),
+    votacionesDivididasDelMismoTema: (f.divididasDelTema ?? [])
+      .filter((s) => s.voto)
+      .slice(0, 4)
+      .map((s) => ({
+        titulo: tituloCorto(s.titulo),
+        fecha: fechaCorta(s.fecha),
+        suVoto: VOTO[s.voto],
+      })),
     supuestos: {
       oficialismo: f.supuestos.oficialismo ? VOTO[f.supuestos.oficialismo] : null,
       bloque: f.supuestos.bloque ? VOTO[f.supuestos.bloque] : null,

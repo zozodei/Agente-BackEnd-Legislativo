@@ -52,6 +52,33 @@ export function aplicarPosturaDeclarada(p, declarado, disciplina) {
   return [...post.map((x) => (x / suma) * presente), p[3]];
 }
 
+/**
+ * Proyecto sin antecedentes: mezcla la salida del modelo con cómo votó el diputado en las
+ * votaciones divididas del mismo tema ([A, N] de esas votaciones), en proporción
+ * `lambda × faltaPrecedente`. La ausencia no se toca (el tema no la informa).
+ */
+export function mezclarAntecedentesTema(p, [temaA, temaN], faltaPrecedente, lambda) {
+  const w = Math.min(1, Math.max(0, lambda * faltaPrecedente));
+  const totalTema = temaA + temaN;
+  if (!w || totalTema <= 0) return p;
+  const presente = p[0] + p[1] + p[2];
+  const a = (1 - w) * p[0] + w * presente * (temaA / totalTema);
+  const n = (1 - w) * p[1] + w * presente * (temaN / totalTema);
+  const b = (1 - w) * p[2];
+  const s = a + n + b;
+  return [(a / s) * presente, (n / s) * presente, (b / s) * presente, p[3]];
+}
+
+/**
+ * Con supuestos declarados, la probabilidad de ausencia se toma de la predicción SIN supuestos:
+ * declarar la postura de un bloque informa cómo vota, no si va a estar presente.
+ */
+export function conAusenciaSinSupuestos(pConSupuestos, pSinSupuestos) {
+  const aus = pSinSupuestos[3];
+  const presente = pConSupuestos[0] + pConSupuestos[1] + pConSupuestos[2] || 1;
+  return [...[0, 1, 2].map((c) => (pConSupuestos[c] / presente) * (1 - aus)), aus];
+}
+
 /** Probabilidades calibradas [A, N, Abst, Aus] para un vector de features. */
 export function predecirProbabilidades(modelo, x) {
   const z = modelo.tipo === 'gbdt' ? logitsGbdt(modelo, x) : logitsLogistica(modelo, x);

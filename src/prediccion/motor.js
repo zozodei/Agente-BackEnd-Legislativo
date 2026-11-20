@@ -8,7 +8,12 @@ import { calcularFeatures, buscarVecinos, K_VECINOS, VENTANA_RECIENTES } from '.
 import { representar, textoDeProyecto } from './similitud.js';
 import { analizarTitulo, clasificarTema, nombreTema, normalizarTexto } from './proyecto.js';
 import { gobiernoEn } from './gobiernos.js';
-import { predecirProbabilidades, aplicarPosturaDeclarada } from './modelo.js';
+import {
+  predecirProbabilidades,
+  aplicarPosturaDeclarada,
+  mezclarAntecedentesTema,
+  conAusenciaSinSupuestos,
+} from './modelo.js';
 import { explicarConPlantilla } from './explicacion.js';
 
 export const DIR_ARTEFACTOS = join(import.meta.dirname, '..', '..', 'data', 'modelo');
@@ -18,8 +23,11 @@ const leer = (archivo) => JSON.parse(gunzipSync(readFileSync(join(DIR_ARTEFACTOS
 export const NIVELES = { alta: 0.75, media: 0.5 };
 export const MIN_VOTACIONES = 20; // menos de esto en 2 años = "pocos datos"
 
-export function nivelDeConfianza(confianza, pocosDatos) {
+export const UMBRAL_ANTECEDENTE = 0.35; // similitud máxima por debajo de la cual no hay antecedente claro
+
+export function nivelDeConfianza(confianza, pocosDatos, sinAntecedentes = false) {
   if (pocosDatos) return 'baja';
+  if (sinAntecedentes) return confianza >= NIVELES.media ? 'media' : 'baja';
   if (confianza >= NIVELES.alta) return 'alta';
   if (confianza >= NIVELES.media) return 'media';
   return 'baja';
@@ -136,7 +144,25 @@ export class MotorPrediccion {
       posturaOficialismo: ofi === 'AFIRMATIVO' ? 0 : ofi === 'NEGATIVO' ? 1 : null,
       posturasBloque: posturasBloque.size ? posturasBloque : null,
     };
-    const { X, detalles, vecinos, recientes } = calcularFeatures(h, ctx, sujetos);
+    const { X, detalles, vecinos, recientes, delTema, simMax } = calcularFeatures(h, ctx, sujetos);
+    // Sin ninguna votación realmente parecida la estimación es poco firme: nunca "alta".
+    const sinAntecedentes = simMax < UMBRAL_ANTECEDENTE;
+    // Con supuestos, la ausencia sale de la predicción sin supuestos (ver EVALUACION_MODELOS.md).
+    const haySupuestos = ctx.posturaOficialismo !== null || ctx.posturasBloque !== null;
+    const Xsin = haySupuestos
+      ? calcularFeatures(
+          h,
+          {
+            ...ctx,
+            posturaOficialismo: null,
+            posturasBloque: null,
+            vecinos,
+            vecinosRecientes: recientes,
+            vecinosTema: delTema,
+          },
+          sujetos,
+        ).X
+      : null;
 
     const predicciones = diputados.map((d, i) => {
       const det = detalles[i];
@@ -148,17 +174,26 @@ export class MotorPrediccion {
         (ctx.posturaOficialismo ?? null) !== null
       )
         declarado = ctx.posturaOficialismo;
-      const p = aplicarPosturaDeclarada(
-        predecirProbabilidades(this.modelo, X[i]),
-        declarado,
-        det.disciplina,
-      );
+      // Supuesto "se vota como las divididas del tema" (lo elige el usuario; no se aplica solo:
+      // en los datos, los proyectos sin antecedentes suelen aprobarse por consenso).
+      const base = haySupuestos
+        ? conAusenciaSinSupuestos(
+            predecirProbabilidades(this.modelo, X[i]),
+            predecirProbabilidades(this.modelo, Xsin[i]),
+          )
+        : predecirProbabilidades(this.modelo, X[i]);
+      const conTema =
+        entrada.comoTemaDividido && delTema.length
+          ? mezclarAntecedentesTema(base, [det.temaDist[0], det.temaDist[1]], 1, 1)
+          : base;
+      const p = aplicarPosturaDeclarada(conTema, declarado, det.disciplina);
       const probabilidades = Object.fromEntries(CLASES.map((c, k) => [c, redondear(p[k])]));
       let voto = CLASES[0];
       for (const c of CLASES) if (probabilidades[c] > probabilidades[voto]) voto = c;
       const pocosDatos = det.totalVentana < MIN_VOTACIONES;
       const confianza = redondear(probabilidades[voto], 3);
       const factores = this.#factores({
+        sinAntecedentes,
         d,
         det,
         voto,
@@ -173,7 +208,7 @@ export class MotorPrediccion {
         voto,
         probabilidades,
         confianza,
-        nivelConfianza: nivelDeConfianza(confianza, pocosDatos),
+        nivelConfianza: nivelDeConfianza(confianza, pocosDatos, sinAntecedentes),
         factores,
         explicacion: explicarConPlantilla(factores),
       };
@@ -199,11 +234,17 @@ export class MotorPrediccion {
       supuestos: {
         posturaOficialismo: ofi ?? null,
         posturasBloque: entrada.posturasBloque ?? {},
+        comoTemaDividido: Boolean(entrada.comoTemaDividido && delTema.length),
         solicitanteDiputadoId: ctx.solicitante ? entrada.solicitanteDiputadoId : null,
       },
       gobierno: gobierno ? { presidente: gobierno.presidente, partido: gobierno.partido } : null,
       similares: vecinos.map(({ iv, sim }) => this.#votacionDTO(iv, sim)),
       similaresRecientes: recientes.map(({ iv, sim }) => this.#votacionDTO(iv, sim)),
+      antecedentes: {
+        similitudMaxima: redondear(simMax, 3),
+        sinAntecedentes,
+        divididasDelTema: delTema.map(({ iv }) => this.#votacionDTO(iv, 1)),
+      },
       resumen: {
         esperados,
         porVoto,
@@ -218,7 +259,17 @@ export class MotorPrediccion {
     };
   }
 
-  #factores({ d, det, voto, probabilidades, confianza, pocosDatos, entrada, sujeto }) {
+  #factores({
+    sinAntecedentes,
+    d,
+    det,
+    voto,
+    probabilidades,
+    confianza,
+    pocosDatos,
+    entrada,
+    sujeto,
+  }) {
     const h = this.historia;
     const nombreVoto = (c) => ((c ?? null) === null ? null : CLASES[c]);
     const similar = (x) => {
@@ -273,8 +324,11 @@ export class MotorPrediccion {
         ultimosDosAnios: Object.fromEntries(CLASES.map((c, k) => [c, det.conteoVentana[k]])),
       },
       datos: { votacionesUltimosDosAnios: det.totalVentana, pocosDatos },
+      antecedentes: { sinAntecedentes },
+      divididasDelTema: det.votosEnTema.map(similar),
       supuestos: {
         oficialismo: entrada.posturaOficialismo ?? null,
+        comoTemaDividido: Boolean(entrada.comoTemaDividido),
         bloque: posturaBloque,
       },
       fuentes: similares.slice(0, 5).map((s) => s.votacionId),

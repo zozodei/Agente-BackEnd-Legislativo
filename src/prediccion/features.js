@@ -57,6 +57,17 @@ export const NOMBRES_FEATURES = [
   'top_blo_N',
   'x_top_dep',
   'x_top_blo',
+  // votaciones DIVIDIDAS del mismo tema (antecedente por convicción cuando no hay ley parecida)
+  'tema_dep_A',
+  'tema_dep_N',
+  'tema_dep_cob',
+  'tema_blo_A',
+  'tema_blo_N',
+  'tema_blo_cob',
+  'n_tema_div',
+  'falta_precedente',
+  'x_falta_tema_dep',
+  'x_falta_tema_blo',
   // historial propio y del bloque
   'dep_base_A',
   'dep_base_N',
@@ -116,6 +127,27 @@ export const N_FEATURES = NOMBRES_FEATURES.length;
  * Votaciones más parecidas en [desdeDia, dia) (una por ley: la de mayor similitud,
  * prefiriendo la votación "en general").
  */
+export const K_TEMA = 8;
+const SIN_TEMA = new Set(['otros', 'procedimiento']);
+
+/**
+ * Las votaciones "en general" más recientes del mismo tema en las que la Cámara se dividió
+ * (≥ 20 % de negativos entre afirmativos y negativos), de los últimos 16 años.
+ */
+export function buscarDivididasDelTema(historia, tema, dia, k = K_TEMA) {
+  if (!tema || SIN_TEMA.has(tema)) return [];
+  const desde = dia - 16 * 365;
+  const salida = [];
+  for (let iv = historia.primeraDesde(dia) - 1; iv >= 0 && salida.length < k; iv--) {
+    const v = historia.votaciones[iv];
+    if (v.dia < desde) break;
+    if (v.tema !== tema || !v.esGeneral || v.tipo !== 'proyecto') continue;
+    const [a, n] = v.conteo;
+    if (a + n >= 100 && n >= 0.2 * (a + n)) salida.push({ iv, sim: 1 });
+  }
+  return salida;
+}
+
 export function buscarVecinos(historia, rep, dia, k = K_VECINOS, desdeDia = -Infinity) {
   if (!rep) return [];
   const desde = Number.isFinite(desdeDia) ? historia.primeraDesde(desdeDia) : 0;
@@ -212,6 +244,8 @@ export function calcularFeatures(historia, ctx, sujetos) {
     buscarVecinos(historia, ctx.rep, dia, K_VECINOS, dia - VENTANA_RECIENTES);
   const pesos = pesosDe(historia, vecinos, dia);
   const pesosRec = pesosDe(historia, recientes, dia);
+  const delTema = ctx.vecinosTema ?? buscarDivididasDelTema(historia, ctx.tema, dia);
+  const pesosTema = pesosDe(historia, delTema, dia);
   const sumaPesos = pesos.reduce((s, w) => s + w, 0) || 1;
   const fechaIso = new Date(dia * 86_400_000).toISOString().slice(0, 10);
 
@@ -246,6 +280,8 @@ export function calcularFeatures(historia, ctx, sujetos) {
   const camSim = pesoCam ? cam.map((x) => x / pesoCam) : PRIOR_GLOBAL;
   const ofiSim = pesoOfi ? [ofi[0] / pesoOfi, ofi[1] / pesoOfi] : [0.5, 0.5];
   const simMax = vecinos[0]?.sim ?? 0;
+  // 1 = ninguna votación realmente parecida (similitud ≤ 0,10); 0 = hay una muy parecida (≥ 0,45)
+  const faltaPrecedente = Math.min(1, Math.max(0, (0.45 - simMax) / 0.35));
   const simMedia = vecinos.length ? vecinos.reduce((s, x) => s + x.sim, 0) / vecinos.length : 0;
 
   // ---- resúmenes por persona
@@ -276,7 +312,8 @@ export function calcularFeatures(historia, ctx, sujetos) {
     }
     const todo = distribucionGrupo(historia, b.miembros, vecinos, pesos, base);
     const rec = distribucionGrupo(historia, b.miembros, recientes, pesosRec, base);
-    infoBloque.set(grupo, { todo, rec, alinOfi: alin, tam: b.indices.length });
+    const tema = distribucionGrupo(historia, b.miembros, delTema, pesosTema, base);
+    infoBloque.set(grupo, { todo, rec, tema, alinOfi: alin, tam: b.indices.length });
   }
 
   // ---- solicitante (mociones): acuerdo histórico entre cada bloque y el bloque de quien la pide
@@ -342,6 +379,7 @@ export function calcularFeatures(historia, ctx, sujetos) {
     };
     const dep = propio(vecinos, pesos, b.todo.dist);
     const depRec = propio(recientes, pesosRec, b.rec.dist);
+    const depTema = propio(delTema, pesosTema, b.tema.dist);
     dep.votos.forEach((x, j) => (x.bloque = b.todo.porVecino[j]?.mayoria ?? null));
     depRec.votos.forEach((x, j) => (x.bloque = b.rec.porVecino[j]?.mayoria ?? null));
 
@@ -408,6 +446,16 @@ export function calcularFeatures(historia, ctx, sujetos) {
       b.rec.porVecino[0]?.d[1] ?? 0,
       topSim2 * ((depRec.votos[0]?.voto === 0 ? 1 : 0) - (depRec.votos[0]?.voto === 1 ? 1 : 0)),
       topSim2 * ((b.rec.porVecino[0]?.d[0] ?? 0) - (b.rec.porVecino[0]?.d[1] ?? 0)),
+      depTema.dist[0],
+      depTema.dist[1],
+      depTema.cobertura,
+      b.tema.dist[0],
+      b.tema.dist[1],
+      b.tema.cobertura,
+      delTema.length / K_TEMA,
+      faltaPrecedente,
+      faltaPrecedente * (depTema.dist[0] - depTema.dist[1]),
+      faltaPrecedente * (b.tema.dist[0] - b.tema.dist[1]),
       ...base,
       ausCorta,
       ausUlt10,
@@ -449,6 +497,12 @@ export function calcularFeatures(historia, ctx, sujetos) {
     detalles.push({
       votosEnSimilares: dep.votos,
       votosEnRecientes: depRec.votos,
+      temaDist: depTema.dist,
+      votosEnTema: depTema.votos.map((x, j) => ({
+        ...x,
+        bloque: b.tema.porVecino[j]?.mayoria ?? null,
+      })),
+      faltaPrecedente,
       depSim: dep.dist,
       bloqueSim: b.todo.dist,
       bloqueRecientes: b.rec.dist,
@@ -472,7 +526,7 @@ export function calcularFeatures(historia, ctx, sujetos) {
       posturaDeclaradaBloque: declBloque ?? null,
     });
   });
-  return { X, detalles, vecinos, recientes, camSim, ofiSim };
+  return { X, detalles, vecinos, recientes, delTema, simMax, faltaPrecedente, camSim, ofiSim };
 }
 
 export { CLASES };
