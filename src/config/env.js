@@ -59,6 +59,8 @@ const envSchema = z
     ANTHROPIC_API_KEY: z.string().optional(),
     LLM_MODELO: z.string().min(1).default('claude-opus-5-5'),
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+    // El analista de bloques razona más: tiempo máximo propio.
+    LLM_TIMEOUT_ANALISTA_MS: z.coerce.number().int().positive().default(50_000),
     // Ausente o vacía por defecto: no concede permisos.
     SUPERADMIN_EMAILS: z
       .string()

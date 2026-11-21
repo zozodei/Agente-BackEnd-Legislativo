@@ -7,6 +7,7 @@ import * as prediccionRepository from '../repositories/prediccion.repository.js'
 import { getAllDiputados } from './diputados.service.js';
 import { getPoroteo } from './poroteos.service.js';
 import { completarExplicaciones } from './explicaciones.service.js';
+import { analizarBloques } from './analistaBloques.service.js';
 import { calcularResultado } from './resultado.js';
 
 let motor = null;
@@ -130,10 +131,29 @@ export async function generarPrediccion(id, { version, supuestos = {} }, userId)
   const m = getMotor();
   const diputados = diputadosParaMotor(await getAllDiputados());
   const t0 = Date.now();
-  const r = m.predecir(
-    { titulo: row.titulo, resumen: row.descripcion, texto: row.texto_proyecto, ...supuestos },
-    diputados,
-  );
+  const { usarAnalistaIA = true, ...resto } = supuestos;
+  const entrada = {
+    titulo: row.titulo,
+    resumen: row.descripcion,
+    texto: row.texto_proyecto,
+    ...resto,
+  };
+  let r = m.predecir(entrada, diputados);
+  // Analista de IA: estima la postura de cada bloque leyendo el proyecto; el modelo la reparte
+  // por diputado. Las posturas declaradas por el usuario tienen prioridad.
+  const analisis = usarAnalistaIA ? await analizarBloques(entrada, r, diputados) : null;
+  if (analisis) {
+    r = m.predecir(
+      {
+        ...entrada,
+        posturasBlandas: Object.fromEntries(
+          Object.entries(analisis.bloques).map(([b, a]) => [b, a.probabilidades]),
+        ),
+        analisisBloques: analisis.bloques,
+      },
+      diputados,
+    );
+  }
   const msPrediccion = Date.now() - t0;
   const explicaciones = await completarExplicaciones(r.predicciones);
 
@@ -181,7 +201,7 @@ export async function generarPrediccion(id, { version, supuestos = {} }, userId)
   }));
   const meta = {
     version_modelo: r.versionModelo,
-    supuestos: r.supuestos,
+    supuestos: { ...r.supuestos, usarAnalistaIA },
     proyecto_id: proyectoId,
     resumen: {
       fecha: r.fecha,
@@ -193,6 +213,7 @@ export async function generarPrediccion(id, { version, supuestos = {} }, userId)
       similares: r.similares.slice(0, 6),
       similaresRecientes: r.similaresRecientes.slice(0, 6),
       explicaciones,
+      analisisBloques: analisis,
       msPrediccion,
     },
   };

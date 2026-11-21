@@ -70,6 +70,26 @@ export function mezclarAntecedentesTema(p, [temaA, temaN], faltaPrecedente, lamb
 }
 
 /**
+ * Postura del bloque INCIERTA (p. ej. estimada por el analista de IA): q = [qA, qN, qAbst].
+ * Es la mezcla de las actualizaciones "duras": L(v) = Σ_c q_c · L_c(v), con
+ * L_c(v) = disciplina si v = c y (1 − disciplina) / 2 si no. Con q de certeza = aplicarPosturaDeclarada.
+ */
+export function aplicarPosturaBlanda(p, q, disciplina) {
+  if (!q) return p;
+  const d = Math.min(Math.max(disciplina, 0.34), 0.995);
+  const presente = p[0] + p[1] + p[2];
+  const sq = q[0] + q[1] + q[2];
+  if (presente <= 0 || sq <= 0) return p;
+  const post = [0, 1, 2].map((v) => {
+    let l = 0;
+    for (let c = 0; c < 3; c++) l += (q[c] / sq) * (v === c ? d : (1 - d) / 2);
+    return p[v] * l;
+  });
+  const suma = post[0] + post[1] + post[2];
+  return [...post.map((x) => (x / suma) * presente), p[3]];
+}
+
+/**
  * Con supuestos declarados, la probabilidad de ausencia se toma de la predicción SIN supuestos:
  * declarar la postura de un bloque informa cómo vota, no si va a estar presente.
  */

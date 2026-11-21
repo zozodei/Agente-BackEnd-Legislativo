@@ -22,6 +22,35 @@ function getCliente() {
   return cliente;
 }
 
+/**
+ * Consulta con salida JSON validada por un esquema zod (structured outputs).
+ * @returns {Promise<{ datos: object, uso: object, modelo: string }>}
+ */
+export async function consultarEstructurado({
+  sistema,
+  usuario,
+  esquema,
+  esfuerzo = 'low',
+  timeoutMs,
+}) {
+  const respuesta = await getCliente().messages.parse(
+    {
+      model: env.LLM_MODELO,
+      max_tokens: 16000,
+      output_config: { effort: esfuerzo, format: zodOutputFormat(esquema) },
+      system: [{ type: 'text', text: sistema, cache_control: { type: 'ephemeral' } }],
+      messages: [
+        { role: 'user', content: typeof usuario === 'string' ? usuario : JSON.stringify(usuario) },
+      ],
+    },
+    timeoutMs ? { timeout: timeoutMs } : undefined,
+  );
+  if (respuesta.stop_reason === 'refusal' || !respuesta.parsed_output) {
+    throw new Error(`El LLM no devolvió una respuesta válida (${respuesta.stop_reason})`);
+  }
+  return { datos: respuesta.parsed_output, uso: respuesta.usage, modelo: respuesta.model };
+}
+
 const Salida = z.object({
   explicaciones: z.array(z.object({ id: z.string(), texto: z.string() })),
 });

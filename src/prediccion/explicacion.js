@@ -138,6 +138,11 @@ export function explicarConPlantilla(f) {
     oraciones.push(
       `El escenario supone que su bloque (${bloque}) vota ${VOTO_TEXTO[f.supuestos.bloque]}, y acompañó la postura mayoritaria de su bloque en el ${pct(f.disciplina.porcentaje)} de sus votaciones de los últimos dos años.`,
     );
+  } else if (f.supuestos?.bloqueIA) {
+    const ia = f.supuestos.bloqueIA;
+    oraciones.push(
+      `El análisis de IA del proyecto estima que su bloque (${bloque}) vota ${VOTO_TEXTO[ia.postura]} (${pct(ia.probabilidades[ia.postura])}): ${ia.razon.replace(/.$/, '')}.`,
+    );
   } else if (b.cobertura > 0.3) {
     const [claseBloque, valor] = Object.entries(b.enSimilares).sort((x, y) => y[1] - x[1])[0];
     let texto = `En esos casos parecidos, los integrantes actuales de su bloque (${bloque}) ${VERBO_GRUPO[claseBloque]} en el ${pct(valor)} de las veces`;

@@ -13,6 +13,7 @@ import {
   aplicarPosturaDeclarada,
   mezclarAntecedentesTema,
   conAusenciaSinSupuestos,
+  aplicarPosturaBlanda,
 } from './modelo.js';
 import { explicarConPlantilla } from './explicacion.js';
 
@@ -126,6 +127,11 @@ export class MotorPrediccion {
     });
 
     // Supuestos del escenario (opcionales)
+    // Posturas estimadas por el analista de IA (inciertas): { [bloque]: { AFIRMATIVO, NEGATIVO, ABSTENCION } }
+    const blandas = new Map();
+    for (const [bloque, q] of Object.entries(entrada.posturasBlandas ?? {})) {
+      blandas.set(claveBloque(bloque), [q.AFIRMATIVO ?? 0, q.NEGATIVO ?? 0, q.ABSTENCION ?? 0]);
+    }
     const posturasBloque = new Map();
     for (const [bloque, voto] of Object.entries(entrada.posturasBloque ?? {})) {
       if (voto in COD && COD[voto] <= 2) posturasBloque.set(claveBloque(bloque), COD[voto]);
@@ -186,7 +192,11 @@ export class MotorPrediccion {
         entrada.comoTemaDividido && delTema.length
           ? mezclarAntecedentesTema(base, [det.temaDist[0], det.temaDist[1]], 1, 1)
           : base;
-      const p = aplicarPosturaDeclarada(conTema, declarado, det.disciplina);
+      // Una postura declarada por el usuario manda sobre la estimada por la IA.
+      const blanda = (declarado ?? null) === null ? blandas.get(sujetos[i].grupo) : null;
+      const p = blanda
+        ? aplicarPosturaBlanda(conTema, blanda, det.disciplina)
+        : aplicarPosturaDeclarada(conTema, declarado, det.disciplina);
       const probabilidades = Object.fromEntries(CLASES.map((c, k) => [c, redondear(p[k])]));
       let voto = CLASES[0];
       for (const c of CLASES) if (probabilidades[c] > probabilidades[voto]) voto = c;
@@ -330,6 +340,7 @@ export class MotorPrediccion {
         oficialismo: entrada.posturaOficialismo ?? null,
         comoTemaDividido: Boolean(entrada.comoTemaDividido),
         bloque: posturaBloque,
+        bloqueIA: entrada.analisisBloques?.[d.bloque] ?? null,
       },
       fuentes: similares.slice(0, 5).map((s) => s.votacionId),
       ventanas: {
