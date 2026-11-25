@@ -48,6 +48,10 @@ VARIANTES = {
     "solo_tema": {"voto": ("tema", "hist_tema"), "presencia": ("tema",)},
     "con_autor": {"voto": ("origen", "signo_autor", "alineacion", "inter_signo", "inter_bloque", "tema", "hist_tema"),
                   "presencia": ("origen", "alineacion", "inter_signo", "tema")},
+    # Etapa 4b: las mismas variantes con la alineación reciente bloque ↔ oficialismo (voto y presencia)
+    "solo_tema_alin": {"voto": ("tema", "hist_tema", "alin_reciente"), "presencia": ("tema", "alin_reciente")},
+    "con_autor_alin": {"voto": ("origen", "signo_autor", "alineacion", "inter_signo", "inter_bloque", "tema", "hist_tema", "alin_reciente"),
+                       "presencia": ("origen", "alineacion", "inter_signo", "tema", "alin_reciente")},
 }
 GRID = {
     ("voto", "logistica"): [0.0003, 0.001, 0.003, 0.01, 0.03],

@@ -28,6 +28,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from joblib import Parallel, delayed  # noqa: E402
 
+from poroteo import alineacion as AL  # noqa: E402
 from poroteo import metricas as M  # noqa: E402
 from poroteo import rutas  # noqa: E402
 from poroteo.carga import consulta, leer_dataset  # noqa: E402
@@ -79,7 +80,9 @@ def preparar(nombre: str, tabla: pd.DataFrame, elegibles: pd.DataFrame, tema_vot
     df = df.reset_index(drop=True)
     df["tema"] = df.expediente.map(dict(zip(tabla.expediente, tabla.tema))).fillna("OTROS")
     th = historial_tema(df, elegibles, tema_vot)
-    return features_sesion(df.drop(columns="tema"), tabla, th)
+    out = features_sesion(df.drop(columns="tema"), tabla, th)
+    # Etapa 4b: alineación reciente del bloque con el oficialismo (sólo votos anteriores al límite)
+    return AL.agregar_alineacion_reciente(out, AL.acuerdos_bloque_oficialismo())
 
 
 def con_historial(df: pd.DataFrame, variante: str) -> pd.DataFrame:

@@ -150,6 +150,7 @@ GRUPOS_PROYECTO = {
     "es_autor": ([], ["es_autor_si", "es_autor_desconocido"]),
     "tema": (["tema", "x_tema_signo"], []),
     "hist_tema": ([], ["ht_A", "ht_N", "ht_AB", "ht_log_n"]),
+    "alin_reciente": ([], ["alin_rec", "alin_rec_log_n"]),  # etapa 4b: alineación reciente bloque ↔ oficialismo
 }
 
 
