@@ -56,7 +56,7 @@ def valor_res(res, evaluacion, modelo, col):
     m = res[(res.modelo == modelo) & (res.conjunto == "VALIDACION") & (res.evaluacion == evaluacion) & (res.historial == "movil")]
     if "subgrupo" in m:
         m = m[m.subgrupo == "todos"]
-    return float(m[col].iloc[0]) if len(m) else None
+    return float(pt(m[col].iloc[0])) if len(m) else None
 
 
 def brier_aprobacion(var, sigma, oficial):
@@ -229,6 +229,31 @@ def main():
         "## 6 · Metas",
         "",
         md(tabla_metas),
+        "",
+        "## 7 · Lectura",
+        "",
+        "- **La regla corrige la señal de 2024.** PRO coincide con la mayoría oficialista en el 100 % de sus votaciones "
+        "de 2024 y UCR–Unión Cívica Radical en el 67 %; Unión por la Patria, en el 11 %. La etiqueta documental "
+        "(NO_OFICIALISTA) no lo reflejaba.",
+        "- **Ley Bases y armas de fuego (PRO/UCR):** `con_autor` predecía RECHAZADO la Ley Bases; `con_autor_alin` "
+        "la predice APROBADO. En armas de fuego, `solo_tema_alin` y `con_autor_alin` bajan P(NEG) de PRO (0,22 y 0,32) "
+        "pero `con_autor_alin` sigue prediciendo RECHAZADO. El error se corrige sólo en parte.",
+        "- **Validación:** la feature no mejora la etapa 4 en conjunto. `solo_tema_alin` empeora el log loss de voto "
+        "(0,502 → 0,517) y el Spearman de negativos (0,43 → 0,35). `con_autor_alin` mejora un poco el log loss "
+        "(0,501 → 0,499), el Spearman (0,40 → 0,43) y el acierto de resultado (0,92 → 0,96), pero el error de negativos "
+        "sube (31,2 → 33,5).",
+        "- **Rolling origin:** la diferencia entre variantes es de milésimas (voto: 0,3868 vs 0,3878 a favor de "
+        "`solo_tema_alin`; presencia: 0,4003 vs 0,4005). Está dentro del ruido; no justifica cambiar la variante elegida.",
+        "- **Votación dividida:** sigue fallando. El error de negativos en divididas queda entre 46 y 50, contra la meta de 30.",
+        "- **Intervalos:** las versiones con alineación cubren menos (IC80 de negativos 0,56–0,60, contra 0,75–0,85 de la meta). "
+        "La cobertura de `solo_tema` (0,92) es la más alta, pero sobre 25 votaciones es una medida ruidosa.",
+        "- **Metas:** ninguna se cumple en las dos variantes con alineación.",
+        "- **Brier de P(aprobación): la meta no es alcanzable tal como está definida.** En ENTRENAMIENTO 399 de 400 "
+        "votaciones aprobaron, y en VALIDACIÓN las 25. Un predictor constante de tasa base tiene Brier ≈ 0,000, y los "
+        "modelos tienen 0,11–0,12. El dataset casi no tiene rechazos, así que no hay de qué aprender el resultado. "
+        "Hace falta redefinir esta meta (por ejemplo, con proyectos rechazados o con el resultado en divididas) antes de decidir.",
+        "- **Decisión:** no conviene pasar `con_autor_alin` ni `solo_tema_alin` a la app todavía. La alineación no mejora "
+        "lo suficiente la validación. Lo que sigue es atacar la votación dividida y la cobertura de intervalos.",
         "",
     ]
     (rutas.REPORTES / "04b_alineacion.md").write_text("\n".join(texto), encoding="utf-8")
