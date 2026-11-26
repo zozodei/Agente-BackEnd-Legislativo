@@ -56,6 +56,10 @@ const envSchema = z
     RATE_LIMIT_WRITE_MAX: z.coerce.number().int().positive().default(60),
     CACHE_DIPUTADOS_MINUTOS: z.coerce.number().nonnegative().default(10),
     // LLM opcional para redactar explicaciones. Sin clave se usan las plantillas.
+    // Gemini (Google AI Studio) tiene plan gratuito: es el proveedor recomendado.
+    GEMINI_API_KEY: z.string().optional(),
+    GEMINI_MODELO: z.string().min(1).default('gemini-2.5-flash'),
+    LLM_PROVEEDOR: z.enum(['gemini', 'anthropic']).optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     LLM_MODELO: z.string().min(1).default('claude-opus-5-5'),
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),

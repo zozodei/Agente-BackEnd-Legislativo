@@ -8,7 +8,11 @@ import { z } from 'zod';
 import { DIR_MODELO, leerJsonGz } from '../dataset/comun.mjs';
 import { Historia, CLASES, diaDe } from '../../src/prediccion/historia.js';
 import { calcularFeatures } from '../../src/prediccion/features.js';
-import { predecirProbabilidades, aplicarPosturaBlanda, aplicarPosturaDeclarada } from '../../src/prediccion/modelo.js';
+import {
+  predecirProbabilidades,
+  aplicarPosturaBlanda,
+  aplicarPosturaDeclarada,
+} from '../../src/prediccion/modelo.js';
 import { gobiernoEn } from '../../src/prediccion/gobiernos.js';
 import { nombreTema } from '../../src/prediccion/proyecto.js';
 import { contextoDeVotacion, sujetosDeVotacion, mayoriasReales } from './filas.mjs';
@@ -18,7 +22,9 @@ import { SISTEMA_ANALISTA } from '../../src/services/analistaBloques.service.js'
 import { tituloCorto, fechaCorta, nombreBloque } from '../../src/prediccion/explicacion.js';
 
 if (!llmDisponible()) {
-  console.error('Falta ANTHROPIC_API_KEY en el .env: el analista no se puede evaluar.');
+  console.error(
+    'Falta GEMINI_API_KEY (gratis) o ANTHROPIC_API_KEY en el .env: el analista no se puede evaluar.',
+  );
   process.exit(1);
 }
 const desde = process.argv[2] ?? '2026-07-01';
@@ -27,10 +33,20 @@ const soloDivididas = (process.argv[4] ?? '1') === '1';
 
 const h = new Historia(leerJsonGz(join(DIR_MODELO, 'historia.json.gz')));
 const modelo = leerJsonGz(join(DIR_MODELO, 'modelo.json.gz'));
-console.log(`modelo estadístico entrenado hasta ${modelo.entrenamiento.hasta}; prueba desde ${desde}`);
+console.log(
+  `modelo estadístico entrenado hasta ${modelo.entrenamiento.hasta}; prueba desde ${desde}`,
+);
 
 const Salida = z.object({
-  bloques: z.array(z.object({ bloque: z.string(), AFIRMATIVO: z.number(), NEGATIVO: z.number(), ABSTENCION: z.number(), razon: z.string() })),
+  bloques: z.array(
+    z.object({
+      bloque: z.string(),
+      AFIRMATIVO: z.number(),
+      NEGATIVO: z.number(),
+      ABSTENCION: z.number(),
+      razon: z.string(),
+    }),
+  ),
   divideALaCamara: z.number(),
   resumen: z.string(),
 });
@@ -49,7 +65,7 @@ const Pa = [];
 const Pd = [];
 const Y = [];
 const porVotacion = [];
-let costo = 0;
+const tokens = { entrada: 0, salida: 0 };
 for (const iv of muestra) {
   const v = h.votaciones[iv];
   const ctx = contextoDeVotacion(h, iv);
@@ -68,15 +84,20 @@ for (const iv of muestra) {
     .map(([g, idx]) => {
       const d0 = detalles[idx[0]];
       const tema = { AFIRMATIVO: 0, NEGATIVO: 0, ABSTENCION: 0 };
-      for (const i of idx) for (const t of detalles[i].votosEnTema) if (t.voto !== null && t.voto <= 2) tema[CLASES[t.voto]]++;
+      for (const i of idx)
+        for (const t of detalles[i].votosEnTema)
+          if (t.voto !== null && t.voto <= 2) tema[CLASES[t.voto]]++;
       return {
         grupo: g,
         bloque: nombreBloque(h.bloques[g] ?? ''),
         integrantes: idx.length,
         esOficialista: Boolean(d0.oficialista),
         coincidenciaConOficialismo: `${Math.round((idx.reduce((s, i) => s + detalles[i].alineacionOficialismo, 0) / idx.length) * 100)} %`,
-        votosDeSusIntegrantesEnVotacionesParecidas: Object.fromEntries(CLASES.map((c, k) => [c, `${Math.round(d0.bloqueSim[k] * 100)} %`])),
-        votosEnVotacionesDivididasDelMismoTema: tema.AFIRMATIVO + tema.NEGATIVO + tema.ABSTENCION ? tema : 'sin datos',
+        votosDeSusIntegrantesEnVotacionesParecidas: Object.fromEntries(
+          CLASES.map((c, k) => [c, `${Math.round(d0.bloqueSim[k] * 100)} %`]),
+        ),
+        votosEnVotacionesDivididasDelMismoTema:
+          tema.AFIRMATIVO + tema.NEGATIVO + tema.ABSTENCION ? tema : 'sin datos',
       };
     });
   const usuario = {
@@ -98,20 +119,35 @@ for (const iv of muestra) {
     bloques: bloques.map(({ grupo: _g, ...b }) => b),
   };
   const t0 = Date.now();
-  const r = await consultarEstructurado({ sistema: SISTEMA_ANALISTA, usuario, esquema: Salida, esfuerzo: 'medium', timeoutMs: 120_000 });
+  const r = await consultarEstructurado({
+    sistema: SISTEMA_ANALISTA,
+    usuario,
+    esquema: Salida,
+    esfuerzo: 'medium',
+    timeoutMs: 120_000,
+  });
   const ms = Date.now() - t0;
-  costo += ((r.uso.input_tokens + (r.uso.cache_read_input_tokens ?? 0) * 0.1) * 4 + r.uso.output_tokens * 20) / 1e6;
+  tokens.entrada += r.uso.entrada;
+  tokens.salida += r.uso.salida;
   const q = new Map();
   for (const b of r.datos.bloques) {
     const bl = bloques.find((x) => x.bloque.toLowerCase() === String(b.bloque).toLowerCase());
-    if (bl) q.set(bl.grupo, [b.AFIRMATIVO, b.NEGATIVO, b.ABSTENCION].map((x) => Math.max(0, x)));
+    if (bl)
+      q.set(
+        bl.grupo,
+        [b.AFIRMATIVO, b.NEGATIVO, b.ABSTENCION].map((x) => Math.max(0, x)),
+      );
   }
   const reales = mayoriasReales(h, iv);
   const real = [0, 0, 0, 0];
   const esp = { base: [0, 0, 0, 0], analista: [0, 0, 0, 0], declarado: [0, 0, 0, 0] };
   sujetos.forEach((s, i) => {
     const pa = aplicarPosturaBlanda(base[i], q.get(s.grupo) ?? null, detalles[i].disciplina);
-    const pd = aplicarPosturaDeclarada(base[i], reales.get(s.grupo) ?? null, detalles[i].disciplina);
+    const pd = aplicarPosturaDeclarada(
+      base[i],
+      reales.get(s.grupo) ?? null,
+      detalles[i].disciplina,
+    );
     Pb.push(base[i]);
     Pa.push(pa);
     Pd.push(pd);
@@ -138,7 +174,13 @@ for (const iv of muestra) {
 const y = Uint8Array.from(Y);
 const resumen = (P) => {
   const m = metricas(P, y, CLASES);
-  return { accuracy: m.accuracy, f1Macro: m.f1Macro, logloss: m.logloss, ece: m.ece, f1Negativo: m.porClase[1].f1 };
+  return {
+    accuracy: m.accuracy,
+    f1Macro: m.f1Macro,
+    logloss: m.logloss,
+    ece: m.ece,
+    f1Negativo: m.porClase[1].f1,
+  };
 };
 const salida = {
   desde,
@@ -147,7 +189,8 @@ const salida = {
   soloModelo: resumen(Pb),
   conAnalista: resumen(Pa),
   conPosturasRealesTecho: resumen(Pd),
-  costoUSDAprox: costo,
+  modeloLlm: process.env.GEMINI_API_KEY ? 'gemini (gratis)' : 'anthropic',
+  tokens,
   detalle: porVotacion,
 };
 writeFileSync(join(DIR_MODELO, 'evaluacion', 'analista.json'), JSON.stringify(salida, null, 1));
