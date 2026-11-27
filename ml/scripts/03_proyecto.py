@@ -81,8 +81,10 @@ def preparar(nombre: str, tabla: pd.DataFrame, elegibles: pd.DataFrame, tema_vot
     df["tema"] = df.expediente.map(dict(zip(tabla.expediente, tabla.tema))).fillna("OTROS")
     th = historial_tema(df, elegibles, tema_vot)
     out = features_sesion(df.drop(columns="tema"), tabla, th)
-    # Etapa 4b: alineación reciente del bloque con el oficialismo (sólo votos anteriores al límite)
-    return AL.agregar_alineacion_reciente(out, AL.acuerdos_bloque_oficialismo())
+    # Etapa 4b/4c: alineación reciente del bloque con el oficialismo (sólo votos anteriores al límite,
+    # sin cruzar un cambio de gobierno)
+    from poroteo.features import _gobiernos
+    return AL.agregar_alineacion_reciente(out, AL.acuerdos_bloque_oficialismo(), gobiernos=_gobiernos())
 
 
 def con_historial(df: pd.DataFrame, variante: str) -> pd.DataFrame:

@@ -52,7 +52,28 @@ VARIANTES = {
     "solo_tema_alin": {"voto": ("tema", "hist_tema", "alin_reciente"), "presencia": ("tema", "alin_reciente")},
     "con_autor_alin": {"voto": ("origen", "signo_autor", "alineacion", "inter_signo", "inter_bloque", "tema", "hist_tema", "alin_reciente"),
                        "presencia": ("origen", "alineacion", "inter_signo", "tema", "alin_reciente")},
+    # Etapa 5: sólo el voto usa el texto; la presencia es la de la variante base (comparación limpia)
+    "solo_tema_texto": {"voto": ("tema", "hist_tema", "texto"), "presencia": ("tema",)},
+    "con_autor_texto": {"voto": ("origen", "signo_autor", "alineacion", "inter_signo", "inter_bloque", "tema", "hist_tema", "texto"),
+                        "presencia": ("origen", "alineacion", "inter_signo", "tema")},
 }
+
+
+def _unir_texto(df):
+    """Une las features de texto (etapa 5) con K elegido por rolling origin. Rellena los NaN de
+    bloques sin mayoría en los vecinos (proporción neutra) y de la rebeldía (0)."""
+    el = json.load(open(DERIV / "05_modo_elegido.json", encoding="utf-8"))  # etapa 5b: modo y K elegidos
+    F = pd.read_csv(DERIV / f"05_feat_{el['modo']}_K{el['K']}.csv")
+    out = df.merge(F, on=["votacion_id", "legislador_id"], how="left", validate="m:1")
+    assert out.txt_sin_texto.notna().all(), "faltan features de texto para filas de ENTRENAMIENTO/VALIDACION"
+    # sin vecinos (votación sin texto) o sin mayoría: proporciones neutras y conteos/similitudes en 0
+    for c in ("txt_own_A", "txt_own_N", "txt_own_AB", "txt_gob_A", "txt_gob_N", "txt_gob_AB",
+              "txt_bmaj_A", "txt_bmaj_N", "txt_bmaj_AB"):
+        out[c] = out[c].fillna(1 / 3)
+    for c in ("txt_own_n", "txt_own_neff", "txt_bmaj_n_abs", "txt_rebeld", "txt_gob_n", "txt_sim_max", "txt_sim_mean"):
+        out[c] = out[c].fillna(0.0)
+    assert not out[[c for c in out.columns if c.startswith("txt_")]].isna().any().any()
+    return out
 GRID = {
     ("voto", "logistica"): [0.0003, 0.001, 0.003, 0.01, 0.03],
     ("presencia", "logistica"): [0.0003, 0.001, 0.003],
@@ -175,8 +196,8 @@ def main():
     filas = filas[filas.split.isin(["ENTRENAMIENTO", "VALIDACION"])]
     tema_vot = tema_por_votacion(tabla, filas)
     log("Preparando datos (mismas features que la etapa 3)…")
-    gen = P3.preparar("general", tabla, eleg, tema_vot)
-    pre = P3.preparar("presencia", tabla, eleg, tema_vot)
+    gen = _unir_texto(P3.preparar("general", tabla, eleg, tema_vot))
+    pre = _unir_texto(P3.preparar("presencia", tabla, eleg, tema_vot))
     assert not gen.split.eq("PRUEBA").any() and not pre.split.eq("PRUEBA").any()
     genM, preM = P3.con_historial(gen, "movil"), P3.con_historial(pre, "movil")
     oficial = P3.totales_oficiales()
@@ -204,6 +225,15 @@ def main():
     for var in VARIANTES:
         folds = list(particiones_ro(genM))
         oof[var] = Parallel(n_jobs=N_JOBS)(delayed(_oof_fold)(var, sel, Y, a, v, preM) for Y, a, v in folds)
+        # Etapa 5b: probabilidades OOF por fila (voto sin calibrar; el argmax no cambia con la temperatura)
+        filas_oof = []
+        for o in oof[var]:
+            m_ = o["B_meta"].copy()
+            m_["anio"], m_["y"] = o["anio"], o["B_y"]
+            for i, c in enumerate(["AFIRMATIVO", "NEGATIVO", "ABSTENCION"]):
+                m_[f"p_{c}"] = o["B_P"][:, i]
+            filas_oof.append(m_)
+        pd.concat(filas_oof, ignore_index=True).to_csv(DERIV / f"04_oof_filas_{var}.csv", index=False)
         oofp = Parallel(n_jobs=N_JOBS)(delayed(_oof_presencia)(var, sel, Y, a, v) for Y, a, v in particiones_ro(preM))
         assert all(o["anio_max_train"] < o["anio"] for o in oof[var])
 

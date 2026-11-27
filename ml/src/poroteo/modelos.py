@@ -150,7 +150,13 @@ GRUPOS_PROYECTO = {
     "es_autor": ([], ["es_autor_si", "es_autor_desconocido"]),
     "tema": (["tema", "x_tema_signo"], []),
     "hist_tema": ([], ["ht_A", "ht_N", "ht_AB", "ht_log_n"]),
-    "alin_reciente": ([], ["alin_rec", "alin_rec_log_n"]),  # etapa 4b: alineación reciente bloque ↔ oficialismo
+    # etapa 4b/4c: alineación reciente bloque ↔ oficialismo, y su cruce con la dirección del proyecto
+    "alin_reciente": ([], ["alin_rec", "alin_rec_log_n", "alin_x_ofic", "alin_x_opos", "alin_x_ejec_ant"]),
+    # etapa 5: votos del diputado y de su bloque en proyectos parecidos del pasado (ver scripts/05_texto.py)
+    "texto": ([], ["txt_own_A", "txt_own_N", "txt_own_AB", "txt_own_n", "txt_own_neff",
+                   "txt_bmaj_A", "txt_bmaj_N", "txt_bmaj_AB", "txt_bmaj_n_abs", "txt_rebeld",
+                   "txt_gob_A", "txt_gob_N", "txt_gob_AB", "txt_gob_n",
+                   "txt_sim_max", "txt_sim_mean", "txt_sin_texto"]),
 }
 
 

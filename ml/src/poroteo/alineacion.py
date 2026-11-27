@@ -32,7 +32,12 @@ from .texto import normalizar
 VENTANA_DIAS = 180
 ALPHA = 5.0  # suavizado hacia PRIOR; con pocas votaciones en la ventana, pesa más el prior
 PRIOR = 0.5
-COLUMNAS = ["alin_rec", "alin_rec_log_n"]
+DIRECCIONES = {  # interacción alineación × dirección del proyecto (ver agregar_alineacion_reciente)
+    "alin_x_ofic": ["EJECUTIVO_VIGENTE", "DIPUTADO_OFICIALISMO"],
+    "alin_x_opos": ["DIPUTADO_NO_OFICIALISTA"],
+    "alin_x_ejec_ant": ["EJECUTIVO_ANTERIOR"],
+}
+COLUMNAS = ["alin_rec", "alin_rec_log_n", *DIRECCIONES]
 
 
 def _oficialismo_por_bloque() -> pd.DataFrame:
@@ -77,15 +82,44 @@ def acuerdos_bloque_oficialismo() -> pd.DataFrame:
     return out.sort_values(["b", "f"]).reset_index(drop=True)
 
 
-def agregar_alineacion_reciente(df: pd.DataFrame, acuerdos: pd.DataFrame) -> pd.DataFrame:
-    """Agrega `alin_rec` y `alin_rec_log_n` a `df`. Requiere `bloque_inicio` (normalizado) y
-    `limite_predictivo_sesion`. Devuelve una copia."""
+def inicio_gobierno_vigente(limites: pd.Series, gobiernos: pd.DataFrame) -> pd.Series:
+    """Fecha de asunción del gobierno vigente en cada límite (NaT si no hay gobierno documentado
+    en esa fecha). `gobiernos` tiene columnas `desde` y `hasta` (de `gobiernos_historicos`)."""
+    izq = pd.DataFrame({"i": np.arange(len(limites)), "L": pd.to_datetime(limites.values)}).sort_values("L")
+    der = gobiernos[["desde"]].assign(desde=lambda d: pd.to_datetime(d.desde)).sort_values("desde")
+    m = pd.merge_asof(izq, der, left_on="L", right_on="desde", direction="backward", allow_exact_matches=True)
+    return pd.Series(m.sort_values("i").desde.values, index=limites.index)
+
+
+def agregar_alineacion_reciente(df: pd.DataFrame, acuerdos: pd.DataFrame, gobiernos: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Agrega `alin_rec`, `alin_rec_log_n` y las interacciones `alin_x_*` a `df`.
+
+    Requiere `bloque_inicio` (normalizado), `limite_predictivo_sesion` y, para las interacciones,
+    `alineacion_gobierno_sesion`. Devuelve una copia.
+
+    Corte por gobierno (etapa 4c): si se pasa `gobiernos`, la ventana no arranca antes de la
+    asunción del gobierno vigente en el límite. Así no se cuentan acuerdos con un oficialismo
+    anterior. Con pocas votaciones en la ventana, el suavizado lleva el valor a PRIOR.
+
+    Interacciones (etapa 4c): alineación centrada (`alin_rec` − PRIOR) × dirección del proyecto:
+      alin_x_ofic     · proyecto del oficialismo (EJECUTIVO_VIGENTE, DIPUTADO_OFICIALISMO)
+      alin_x_opos     · proyecto de la oposición (DIPUTADO_NO_OFICIALISTA)
+      alin_x_ejec_ant · proyecto del Ejecutivo anterior (EJECUTIVO_ANTERIOR)
+    El resto (NO_VERIFICADO, SENADOR, COMISION, ...) queda sin interacción.
+    """
+    assert "alineacion_gobierno_sesion" in df.columns, "falta alineacion_gobierno_sesion para las interacciones"
     out = df.copy()
     n = len(out)
     cons_ok = np.full(n, 0.0)
     cnt = np.zeros(n)
-    L = pd.to_datetime(out.limite_predictivo_sesion).values
-    ventana = np.timedelta64(VENTANA_DIAS, "D")
+    L = pd.to_datetime(out.limite_predictivo_sesion)
+    ventana = pd.Timedelta(days=VENTANA_DIAS)
+    desde = L - ventana
+    if gobiernos is not None:
+        inicio = pd.to_datetime(inicio_gobierno_vigente(out.limite_predictivo_sesion, gobiernos).values)
+        desde = pd.Series(np.where(pd.isna(inicio), desde.values, np.maximum(desde.values, inicio.values)), index=out.index)
+    desde = pd.to_datetime(desde).values
+    L = L.values
     grupos = out.bloque_inicio.values
     indices = pd.Series(np.arange(n)).groupby(grupos).indices
     por_bloque = {b: g for b, g in acuerdos.groupby("b")}
@@ -95,11 +129,14 @@ def agregar_alineacion_reciente(df: pd.DataFrame, acuerdos: pd.DataFrame) -> pd.
         g = por_bloque[b].sort_values("f")
         f = g.f.values
         acum_agree = np.concatenate([[0.0], np.cumsum(g.agree.values)])
-        Lq = L[idx]
-        hi = np.searchsorted(f, Lq, side="left")  # votaciones con fecha < límite
-        lo = np.searchsorted(f, Lq - ventana, side="left")  # ... y fecha >= límite − ventana
+        hi = np.searchsorted(f, L[idx], side="left")  # votaciones con fecha < límite
+        lo = np.searchsorted(f, desde[idx], side="left")  # ... y fecha >= inicio de la ventana
         cons_ok[idx] = acum_agree[hi] - acum_agree[lo]
         cnt[idx] = hi - lo
     out["alin_rec"] = (cons_ok + ALPHA * PRIOR) / (cnt + ALPHA)
     out["alin_rec_log_n"] = np.log1p(cnt)
+    centrada = out.alin_rec - PRIOR
+    cat = out.alineacion_gobierno_sesion
+    for col, valores in DIRECCIONES.items():
+        out[col] = centrada * cat.isin(valores).astype(float)
     return out
