@@ -3,7 +3,7 @@
 // no está en los factores, se descarta su texto y queda la plantilla. Caché por hash de los datos.
 import { createHash } from 'node:crypto';
 import { logger } from '../config/logger.js';
-import { llmDisponible, redactarExplicaciones } from '../clients/llm.client.js';
+import { explicacionesConLlm, redactarExplicaciones } from '../clients/llm.client.js';
 import * as cacheRepository from '../repositories/explicaciones.repository.js';
 import { fechaCorta, tituloCorto, nombreBloque } from '../prediccion/explicacion.js';
 
@@ -97,7 +97,7 @@ export function validarTexto(texto, datos) {
  * Nunca falla: ante cualquier error del LLM queda la plantilla con estado 'error'.
  */
 export async function completarExplicaciones(predicciones) {
-  if (!llmDisponible()) {
+  if (!explicacionesConLlm()) {
     for (const p of predicciones)
       Object.assign(p, { explicacionFuente: 'plantilla', explicacionEstado: 'sin_llm' });
     return { fuente: 'plantilla', llm: false };

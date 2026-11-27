@@ -13,7 +13,6 @@ import {
   aplicarPosturaDeclarada,
   mezclarAntecedentesTema,
   conAusenciaSinSupuestos,
-  aplicarPosturaBlanda,
 } from './modelo.js';
 import { explicarConPlantilla } from './explicacion.js';
 
@@ -154,7 +153,8 @@ export class MotorPrediccion {
     // Sin ninguna votación realmente parecida la estimación es poco firme: nunca "alta".
     const sinAntecedentes = simMax < UMBRAL_ANTECEDENTE;
     // Con supuestos, la ausencia sale de la predicción sin supuestos (ver EVALUACION_MODELOS.md).
-    const haySupuestos = ctx.posturaOficialismo !== null || ctx.posturasBloque !== null;
+    const haySupuestos =
+      ctx.posturaOficialismo !== null || ctx.posturasBloque !== null || blandas.size > 0;
     const Xsin = haySupuestos
       ? calcularFeatures(
           h,
@@ -168,6 +168,26 @@ export class MotorPrediccion {
           },
           sujetos,
         ).X
+      : null;
+    // Posturas de la IA (inciertas): se calcula la predicción "si el bloque vota A / N / Abst"
+    // con el modelo entrenado para posturas conocidas, y se pondera por la probabilidad de cada una:
+    // P(voto) = Σ_c q_c · P(voto | bloque vota c). Ver EVALUACION_MODELOS.md.
+    const Xpor = blandas.size
+      ? [0, 1, 2].map((c) => {
+          const posturas = new Map(ctx.posturasBloque ?? []);
+          for (const g of blandas.keys()) if (!posturas.has(g)) posturas.set(g, c);
+          return calcularFeatures(
+            h,
+            {
+              ...ctx,
+              posturasBloque: posturas,
+              vecinos,
+              vecinosRecientes: recientes,
+              vecinosTema: delTema,
+            },
+            sujetos,
+          ).X;
+        })
       : null;
 
     const predicciones = diputados.map((d, i) => {
@@ -194,9 +214,23 @@ export class MotorPrediccion {
           : base;
       // Una postura declarada por el usuario manda sobre la estimada por la IA.
       const blanda = (declarado ?? null) === null ? blandas.get(sujetos[i].grupo) : null;
-      const p = blanda
-        ? aplicarPosturaBlanda(conTema, blanda, det.disciplina)
-        : aplicarPosturaDeclarada(conTema, declarado, det.disciplina);
+      let p;
+      if (blanda) {
+        const sq = blanda[0] + blanda[1] + blanda[2] || 1;
+        const sin = predecirProbabilidades(this.modelo, Xsin[i]);
+        p = [0, 0, 0, 0];
+        for (let c = 0; c < 3; c++) {
+          if (!blanda[c]) continue;
+          const pc = aplicarPosturaDeclarada(
+            conAusenciaSinSupuestos(predecirProbabilidades(this.modelo, Xpor[c][i]), sin),
+            c,
+            det.disciplina,
+          );
+          for (let k = 0; k < 4; k++) p[k] += (blanda[c] / sq) * pc[k];
+        }
+      } else {
+        p = aplicarPosturaDeclarada(conTema, declarado, det.disciplina);
+      }
       const probabilidades = Object.fromEntries(CLASES.map((c, k) => [c, redondear(p[k])]));
       let voto = CLASES[0];
       for (const c of CLASES) if (probabilidades[c] > probabilidades[voto]) voto = c;

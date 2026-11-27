@@ -47,8 +47,9 @@ Supabase, o `supabase db push`) y cargar los datos limpios y embeddings:
 npm run supabase:cargar      # idempotente; usa SUPABASE_URL y SUPABASE_SECRET_KEY del .env
 ```
 
-**2. API.** `npm run dev`. Sin `ANTHROPIC_API_KEY` las explicaciones son automáticas (armadas
-solo con datos); con la clave, un LLM las redacta y se validan contra los datos.
+**2. API.** `npm run dev`. Con `GEMINI_API_KEY` (gratis: https://aistudio.google.com/apikey) se activa
+el **analista de bloques**: la IA lee el proyecto y estima la postura de cada bloque, y el modelo
+estadístico la reparte diputado por diputado. Sin clave, la predicción usa solo el historial.
 
 **3. Probar de punta a punta** (crea un poroteo, estima, ajusta, vuelve a la IA y lo borra):
 
@@ -102,7 +103,9 @@ npm run supabase:cargar      # sube los datos limpios a Supabase
 | `RATE_LIMIT_MAX`           |             | Requests por ventana por IP (default `300`)                     |
 | `RATE_LIMIT_WRITE_MAX`     |             | Escrituras por ventana por IP (default `60`)                    |
 | `CACHE_DIPUTADOS_MINUTOS`  |             | Caché en memoria de los 257 diputados (default `10`)            |
-| `ANTHROPIC_API_KEY`        |             | Opcional: LLM que redacta las explicaciones. Nunca en el front  |
+| `GEMINI_API_KEY`           |             | Recomendado (gratis): analista de bloques con IA. Nunca en el front |
+| `GEMINI_MODELO`            |             | Modelo de Gemini (default `gemini-3.8-flash`, con respaldos)    |
+| `ANTHROPIC_API_KEY`        |             | Alternativa paga al analista y explicaciones redactadas         |
 | `LLM_MODELO`               |             | Modelo del LLM (default `claude-opus-5-5`)                      |
 | `LLM_TIMEOUT_MS`           |             | Tiempo máximo por llamada al LLM (default `20000`)              |
 

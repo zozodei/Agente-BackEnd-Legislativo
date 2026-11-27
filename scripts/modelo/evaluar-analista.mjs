@@ -2,7 +2,7 @@
 // ni el LLM pudieron ver (por defecto: desde el 01/07/2026, posterior al conocimiento del LLM y al
 // entrenamiento). Para cada votación, el LLM recibe solo el título, la fecha y datos previos.
 //   node --env-file=.env scripts/modelo/evaluar-analista.mjs [desde=2026-07-01] [max=12] [soloDivididas=1]
-import { writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { DIR_MODELO, leerJsonGz } from '../dataset/comun.mjs';
@@ -12,6 +12,7 @@ import {
   predecirProbabilidades,
   aplicarPosturaBlanda,
   aplicarPosturaDeclarada,
+  conAusenciaSinSupuestos,
 } from '../../src/prediccion/modelo.js';
 import { gobiernoEn } from '../../src/prediccion/gobiernos.js';
 import { nombreTema } from '../../src/prediccion/proyecto.js';
@@ -51,6 +52,10 @@ const Salida = z.object({
   resumen: z.string(),
 });
 
+// Las respuestas de la IA se guardan: re-evaluar otro método de combinación no vuelve a consultarla.
+const rutaCache = join(DIR_MODELO, 'evaluacion', 'analista-respuestas.json');
+const cacheRespuestas = existsSync(rutaCache) ? JSON.parse(readFileSync(rutaCache, 'utf8')) : {};
+const Pm = [];
 const elegidas = [];
 for (let iv = 0; iv < h.votaciones.length; iv++) {
   const v = h.votaciones[iv];
@@ -70,7 +75,7 @@ for (const iv of muestra) {
   const v = h.votaciones[iv];
   const ctx = contextoDeVotacion(h, iv);
   const { sujetos, etiquetas } = sujetosDeVotacion(h, iv);
-  const { X, detalles, vecinos, delTema } = calcularFeatures(h, ctx, sujetos);
+  const { X, detalles, vecinos, recientes, delTema } = calcularFeatures(h, ctx, sujetos);
   const base = X.map((x) => predecirProbabilidades(modelo, x));
 
   // contexto por bloque con datos previos a la votación
@@ -119,13 +124,21 @@ for (const iv of muestra) {
     bloques: bloques.map(({ grupo: _g, ...b }) => b),
   };
   const t0 = Date.now();
-  const r = await consultarEstructurado({
-    sistema: SISTEMA_ANALISTA,
-    usuario,
-    esquema: Salida,
-    esfuerzo: 'medium',
-    timeoutMs: 120_000,
-  });
+  const r =
+    cacheRespuestas[v.id] ??
+    (await consultarEstructurado({
+      sistema: SISTEMA_ANALISTA,
+      usuario,
+      esquema: Salida,
+      esfuerzo: 'medium',
+      timeoutMs: 240_000,
+    }).catch((error) => {
+      console.log(`  ✗ ${v.fecha} ${v.nombreLey ?? v.titulo}: ${error.message} (se omite)`);
+      return null;
+    }));
+  if (!r) continue;
+  cacheRespuestas[v.id] = r;
+  writeFileSync(rutaCache, JSON.stringify(cacheRespuestas));
   const ms = Date.now() - t0;
   tokens.entrada += r.uso.entrada;
   tokens.salida += r.uso.salida;
@@ -138,9 +151,29 @@ for (const iv of muestra) {
         [b.AFIRMATIVO, b.NEGATIVO, b.ABSTENCION].map((x) => Math.max(0, x)),
       );
   }
+  // Método marginal: P = Σ_c q_c · P(voto | bloque vota c) con el modelo de posturas conocidas.
+  const Xpor = [0, 1, 2].map((c) => {
+    const posturas = new Map([...q.keys()].map((g) => [g, c]));
+    return calcularFeatures(
+      h,
+      {
+        ...ctx,
+        posturasBloque: posturas,
+        vecinos,
+        vecinosRecientes: recientes,
+        vecinosTema: delTema,
+      },
+      sujetos,
+    ).X;
+  });
   const reales = mayoriasReales(h, iv);
   const real = [0, 0, 0, 0];
-  const esp = { base: [0, 0, 0, 0], analista: [0, 0, 0, 0], declarado: [0, 0, 0, 0] };
+  const esp = {
+    base: [0, 0, 0, 0],
+    analista: [0, 0, 0, 0],
+    marginal: [0, 0, 0, 0],
+    declarado: [0, 0, 0, 0],
+  };
   sujetos.forEach((s, i) => {
     const pa = aplicarPosturaBlanda(base[i], q.get(s.grupo) ?? null, detalles[i].disciplina);
     const pd = aplicarPosturaDeclarada(
@@ -148,6 +181,23 @@ for (const iv of muestra) {
       reales.get(s.grupo) ?? null,
       detalles[i].disciplina,
     );
+    const qq = q.get(s.grupo);
+    let pm = base[i];
+    if (qq) {
+      const sq = qq[0] + qq[1] + qq[2] || 1;
+      pm = [0, 0, 0, 0];
+      for (let c = 0; c < 3; c++) {
+        if (!qq[c]) continue;
+        const pc = aplicarPosturaDeclarada(
+          conAusenciaSinSupuestos(predecirProbabilidades(modelo, Xpor[c][i]), base[i]),
+          c,
+          detalles[i].disciplina,
+        );
+        for (let k = 0; k < 4; k++) pm[k] += (qq[c] / sq) * pc[k];
+      }
+    }
+    Pm.push(pm);
+    for (let k = 0; k < 4; k++) esp.marginal[k] += pm[k];
     Pb.push(base[i]);
     Pa.push(pa);
     Pd.push(pd);
@@ -165,6 +215,7 @@ for (const iv of muestra) {
     real: `${real[0]}–${real[1]}`,
     soloModelo: `${Math.round(esp.base[0])}–${Math.round(esp.base[1])}`,
     conAnalista: `${Math.round(esp.analista[0])}–${Math.round(esp.analista[1])}`,
+    conAnalistaMarginal: `${Math.round(esp.marginal[0])}–${Math.round(esp.marginal[1])}`,
     conPosturasReales: `${Math.round(esp.declarado[0])}–${Math.round(esp.declarado[1])}`,
     segundos: Math.round(ms / 1000),
   };
@@ -188,6 +239,7 @@ const salida = {
   filas: Y.length,
   soloModelo: resumen(Pb),
   conAnalista: resumen(Pa),
+  conAnalistaMarginal: resumen(Pm),
   conPosturasRealesTecho: resumen(Pd),
   modeloLlm: process.env.GEMINI_API_KEY ? 'gemini (gratis)' : 'anthropic',
   tokens,

@@ -58,13 +58,16 @@ const envSchema = z
     // LLM opcional para redactar explicaciones. Sin clave se usan las plantillas.
     // Gemini (Google AI Studio) tiene plan gratuito: es el proveedor recomendado.
     GEMINI_API_KEY: z.string().optional(),
-    GEMINI_MODELO: z.string().min(1).default('gemini-2.5-flash'),
+    GEMINI_MODELO: z.string().min(1).default('gemini-3.8-flash'),
+    // Explicaciones redactadas por LLM: 1 consulta cada 10 diputados. Con el plan gratis de
+    // Gemini (cola + límite por minuto) no conviene: por defecto solo con Anthropic.
+    LLM_EXPLICACIONES: z.enum(['auto', 'si', 'no']).default('auto'),
     LLM_PROVEEDOR: z.enum(['gemini', 'anthropic']).optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
     LLM_MODELO: z.string().min(1).default('claude-opus-5-5'),
     LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
     // El analista de bloques razona más: tiempo máximo propio.
-    LLM_TIMEOUT_ANALISTA_MS: z.coerce.number().int().positive().default(50_000),
+    LLM_TIMEOUT_ANALISTA_MS: z.coerce.number().int().positive().default(180_000),
     // Ausente o vacía por defecto: no concede permisos.
     SUPERADMIN_EMAILS: z
       .string()

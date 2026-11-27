@@ -22,6 +22,13 @@ export function llmDisponible() {
   return proveedorLlm() !== null;
 }
 
+/** ¿Redactar las explicaciones con LLM? (con Gemini gratis, por defecto no: ver env.js) */
+export function explicacionesConLlm() {
+  if (env.LLM_EXPLICACIONES === 'no') return false;
+  if (env.LLM_EXPLICACIONES === 'si') return llmDisponible();
+  return proveedorLlm() === 'anthropic';
+}
+
 // ------------------------------------------------------------------ Anthropic
 let clienteAnthropic = null;
 function anthropic() {
@@ -58,50 +65,74 @@ async function consultarAnthropic({ sistema, usuario, esquema, esfuerzo, timeout
 
 // ------------------------------------------------------------------ Gemini (gratis)
 const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta';
-let modeloGemini = null;
+let modelosGemini = null;
 
 async function fetchGemini(ruta, opciones = {}, timeoutMs = env.LLM_TIMEOUT_MS) {
-  const res = await fetch(`${GEMINI_URL}${ruta}`, {
-    ...opciones,
-    // La clave va en un encabezado, nunca en la URL (no queda en logs).
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': env.GEMINI_API_KEY,
-      ...opciones.headers,
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const texto = await res.text();
-  const json = texto ? JSON.parse(texto) : {};
-  return { status: res.status, json };
-}
-
-/** Si el modelo configurado no existe, elige el "flash" más nuevo disponible para la clave. */
-async function elegirModeloGemini() {
-  if (modeloGemini) return modeloGemini;
-  modeloGemini = env.GEMINI_MODELO;
-  const { status, json } = await fetchGemini('/models?pageSize=200');
-  if (status === 200) {
-    const nombres = (json.models ?? [])
-      .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
-      .map((m) => m.name.replace(/^models\//, ''));
-    if (!nombres.includes(modeloGemini)) {
-      const flash = nombres
-        .filter((n) => /flash/.test(n) && !/lite|image|tts|live|exp/.test(n))
-        .sort()
-        .reverse();
-      if (flash.length) modeloGemini = flash[0];
-      logger.warn(
-        { configurado: env.GEMINI_MODELO, elegido: modeloGemini },
-        'Modelo Gemini no disponible: se usa otro',
-      );
+  try {
+    const res = await fetch(`${GEMINI_URL}${ruta}`, {
+      ...opciones,
+      // La clave va en un encabezado, nunca en la URL (no queda en logs).
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': env.GEMINI_API_KEY,
+        ...opciones.headers,
+      },
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const texto = await res.text();
+    let json = {};
+    try {
+      json = texto ? JSON.parse(texto) : {};
+    } catch {
+      json = { error: { message: texto.slice(0, 200) } };
     }
+    return { status: res.status, json };
+  } catch (error) {
+    // timeout o red caída: se trata como "servicio no disponible" para probar otro modelo
+    return { status: 599, json: { error: { message: String(error?.message ?? error) } } };
   }
-  return modeloGemini;
 }
 
-async function consultarGemini({ sistema, usuario, esquema, timeoutMs }) {
-  const modelo = await elegirModeloGemini();
+/**
+ * Modelos a probar, en orden: el configurado y, de respaldo, otros "flash" del plan gratuito
+ * (el plan gratis a veces responde 503 "alta demanda" en un modelo y no en otro).
+ */
+async function modelosDisponibles() {
+  if (modelosGemini) return modelosGemini;
+  const preferidos = [
+    env.GEMINI_MODELO,
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-3-flash-preview',
+  ];
+  const { status, json } = await fetchGemini('/models?pageSize=200');
+  const existentes =
+    status === 200
+      ? new Set(
+          (json.models ?? [])
+            .filter((m) => (m.supportedGenerationMethods ?? []).includes('generateContent'))
+            .map((m) => m.name.replace(/^models\//, '')),
+        )
+      : null;
+  modelosGemini = [...new Set(preferidos)].filter((m) => !existentes || existentes.has(m));
+  if (!modelosGemini.length) modelosGemini = [env.GEMINI_MODELO];
+  return modelosGemini;
+}
+
+const REINTENTABLE = new Set([429, 500, 503, 599]);
+
+/** Reintenta 429/5xx con espera creciente (el plan gratis limita pedidos por minuto). */
+async function conReintentos(pedido, intentos = 3) {
+  for (let intento = 0; ; intento++) {
+    const r = await pedido();
+    if (!REINTENTABLE.has(r.status) || intento >= intentos - 1) return r;
+    const espera = 10_000 * (intento + 1);
+    logger.warn({ status: r.status, espera }, 'Gemini no disponible por el momento, se reintenta');
+    await new Promise((res) => setTimeout(res, espera));
+  }
+}
+
+async function consultarGemini({ sistema, usuario, esquema, esfuerzo, timeoutMs }) {
   const jsonSchema = z.toJSONSchema(esquema, { target: 'draft-7' });
   const cuerpo = (conEsquema) => ({
     systemInstruction: { parts: [{ text: sistema }] },
@@ -112,51 +143,61 @@ async function consultarGemini({ sistema, usuario, esquema, timeoutMs }) {
           {
             text: conEsquema
               ? usuario
-              : `${usuario}\n\nRespondé SOLO con un JSON que cumpla este esquema:\n${JSON.stringify(jsonSchema)}`,
+              : `${usuario}
+
+Respondé SOLO con un JSON que cumpla este esquema:
+${JSON.stringify(jsonSchema)}`,
           },
         ],
       },
     ],
     generationConfig: {
       temperature: 0.2,
+      thinkingConfig: { thinkingLevel: esfuerzo === 'low' ? 'low' : 'medium' },
       responseMimeType: 'application/json',
       ...(conEsquema ? { responseJsonSchema: jsonSchema } : {}),
     },
   });
-  const ruta = `/models/${encodeURIComponent(modelo)}:generateContent`;
-  let r = await fetchGemini(
-    ruta,
-    { method: 'POST', body: JSON.stringify(cuerpo(true)) },
-    timeoutMs ?? env.LLM_TIMEOUT_MS,
-  );
-  // Algunos modelos no aceptan el esquema en la configuración: se pide en el texto y se valida igual.
-  if (r.status === 400) {
-    r = await fetchGemini(
-      ruta,
-      { method: 'POST', body: JSON.stringify(cuerpo(false)) },
-      timeoutMs ?? env.LLM_TIMEOUT_MS,
+  const limite = timeoutMs ?? env.LLM_TIMEOUT_MS;
+  let ultimo = null;
+  for (const modelo of await modelosDisponibles()) {
+    const ruta = `/models/${encodeURIComponent(modelo)}:generateContent`;
+    const pedir = (conEsquema) => () =>
+      fetchGemini(ruta, { method: 'POST', body: JSON.stringify(cuerpo(conEsquema)) }, limite);
+    let r = await conReintentos(pedir(true));
+    // Algunos modelos no aceptan el esquema en la configuración: se pide en el texto y se valida igual.
+    if (r.status === 400) r = await conReintentos(pedir(false));
+    if (r.status === 200) {
+      const texto = (r.json.candidates?.[0]?.content?.parts ?? [])
+        .filter((p) => !p.thought)
+        .map((p) => p.text ?? '')
+        .join('');
+      if (!texto) {
+        ultimo = new Error(
+          `Gemini no devolvió texto (${r.json.candidates?.[0]?.finishReason ?? 'sin candidato'})`,
+        );
+        continue;
+      }
+      const limpio = texto
+        .trim()
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/```$/, '')
+        .trim();
+      return {
+        datos: esquema.parse(JSON.parse(limpio)),
+        uso: {
+          entrada: r.json.usageMetadata?.promptTokenCount ?? 0,
+          salida: r.json.usageMetadata?.candidatesTokenCount ?? 0,
+        },
+        modelo,
+      };
+    }
+    ultimo = new Error(
+      `Gemini (${modelo}) respondió ${r.status}: ${r.json?.error?.message ?? 'error desconocido'}`,
     );
+    logger.warn({ modelo, status: r.status }, 'Gemini: se prueba con otro modelo');
   }
-  if (r.status !== 200) {
-    throw new Error(
-      `Gemini respondió ${r.status}: ${r.json?.error?.message ?? 'error desconocido'}`,
-    );
-  }
-  const texto = (r.json.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('');
-  if (!texto)
-    throw new Error(
-      `Gemini no devolvió texto (${r.json.candidates?.[0]?.finishReason ?? 'sin candidato'})`,
-    );
-  const limpio = texto.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-  const datos = esquema.parse(JSON.parse(limpio));
-  return {
-    datos,
-    uso: {
-      entrada: r.json.usageMetadata?.promptTokenCount ?? 0,
-      salida: r.json.usageMetadata?.candidatesTokenCount ?? 0,
-    },
-    modelo,
-  };
+  throw ultimo ?? new Error('Gemini no está disponible');
 }
 
 // ------------------------------------------------------------------ API común
