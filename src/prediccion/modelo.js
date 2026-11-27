@@ -69,6 +69,14 @@ export function mezclarAntecedentesTema(p, [temaA, temaN], faltaPrecedente, lamb
   return [(a / s) * presente, (n / s) * presente, (b / s) * presente, p[3]];
 }
 
+/** Afila probabilidades: q_c^γ normalizado (γ = 1 no cambia nada). */
+export function afilar(q, gamma) {
+  if (!q) return q;
+  const w = q.map((x) => Math.max(x, 0) ** gamma);
+  const t = w[0] + w[1] + w[2] || 1;
+  return w.map((x) => x / t);
+}
+
 /**
  * Postura del bloque INCIERTA (p. ej. estimada por el analista de IA): q = [qA, qN, qAbst].
  * Es la mezcla de las actualizaciones "duras": L(v) = Σ_c q_c · L_c(v), con

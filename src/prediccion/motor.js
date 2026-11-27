@@ -13,6 +13,8 @@ import {
   aplicarPosturaDeclarada,
   mezclarAntecedentesTema,
   conAusenciaSinSupuestos,
+  aplicarPosturaBlanda,
+  afilar,
 } from './modelo.js';
 import { explicarConPlantilla } from './explicacion.js';
 
@@ -23,6 +25,7 @@ const leer = (archivo) => JSON.parse(gunzipSync(readFileSync(join(DIR_ARTEFACTOS
 export const NIVELES = { alta: 0.75, media: 0.5 };
 export const MIN_VOTACIONES = 20; // menos de esto en 2 años = "pocos datos"
 
+export const GAMMA_IA = 3; // afilado de las probabilidades del analista (validado en backtesting)
 export const UMBRAL_ANTECEDENTE = 0.35; // similitud máxima por debajo de la cual no hay antecedente claro
 
 export function nivelDeConfianza(confianza, pocosDatos, sinAntecedentes = false) {
@@ -172,23 +175,26 @@ export class MotorPrediccion {
     // Posturas de la IA (inciertas): se calcula la predicción "si el bloque vota A / N / Abst"
     // con el modelo entrenado para posturas conocidas, y se pondera por la probabilidad de cada una:
     // P(voto) = Σ_c q_c · P(voto | bloque vota c). Ver EVALUACION_MODELOS.md.
-    const Xpor = blandas.size
-      ? [0, 1, 2].map((c) => {
-          const posturas = new Map(ctx.posturasBloque ?? []);
-          for (const g of blandas.keys()) if (!posturas.has(g)) posturas.set(g, c);
-          return calcularFeatures(
-            h,
-            {
-              ...ctx,
-              posturasBloque: posturas,
-              vecinos,
-              vecinosRecientes: recientes,
-              vecinosTema: delTema,
-            },
-            sujetos,
-          ).X;
-        })
-      : null;
+    // Híbrido (EVALUACION_MODELOS.md): sin antecedentes manda la IA (marginal con q afilado, γ=3);
+    // con antecedentes, actualización suave del modelo con la postura estimada.
+    const Xpor =
+      blandas.size && sinAntecedentes
+        ? [0, 1, 2].map((c) => {
+            const posturas = new Map(ctx.posturasBloque ?? []);
+            for (const g of blandas.keys()) if (!posturas.has(g)) posturas.set(g, c);
+            return calcularFeatures(
+              h,
+              {
+                ...ctx,
+                posturasBloque: posturas,
+                vecinos,
+                vecinosRecientes: recientes,
+                vecinosTema: delTema,
+              },
+              sujetos,
+            ).X;
+          })
+        : null;
 
     const predicciones = diputados.map((d, i) => {
       const det = detalles[i];
@@ -215,18 +221,21 @@ export class MotorPrediccion {
       // Una postura declarada por el usuario manda sobre la estimada por la IA.
       const blanda = (declarado ?? null) === null ? blandas.get(sujetos[i].grupo) : null;
       let p;
-      if (blanda) {
-        const sq = blanda[0] + blanda[1] + blanda[2] || 1;
+      if (blanda && !Xpor) {
+        p = aplicarPosturaBlanda(conTema, blanda, det.disciplina);
+      } else if (blanda) {
+        const qa = afilar(blanda, GAMMA_IA);
+        const sq = qa[0] + qa[1] + qa[2] || 1;
         const sin = predecirProbabilidades(this.modelo, Xsin[i]);
         p = [0, 0, 0, 0];
         for (let c = 0; c < 3; c++) {
-          if (!blanda[c]) continue;
+          if (!qa[c]) continue;
           const pc = aplicarPosturaDeclarada(
             conAusenciaSinSupuestos(predecirProbabilidades(this.modelo, Xpor[c][i]), sin),
             c,
             det.disciplina,
           );
-          for (let k = 0; k < 4; k++) p[k] += (blanda[c] / sq) * pc[k];
+          for (let k = 0; k < 4; k++) p[k] += (qa[c] / sq) * pc[k];
         }
       } else {
         p = aplicarPosturaDeclarada(conTema, declarado, det.disciplina);

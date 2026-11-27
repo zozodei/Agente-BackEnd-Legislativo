@@ -56,6 +56,13 @@ const Salida = z.object({
 const rutaCache = join(DIR_MODELO, 'evaluacion', 'analista-respuestas.json');
 const cacheRespuestas = existsSync(rutaCache) ? JSON.parse(readFileSync(rutaCache, 'utf8')) : {};
 const Pm = [];
+const Ph = [];
+export function afilar(q, gamma) {
+  if (!q) return q;
+  const w = q.map((x) => Math.max(x, 0) ** gamma);
+  const t = w[0] + w[1] + w[2] || 1;
+  return w.map((x) => x / t);
+}
 const elegidas = [];
 for (let iv = 0; iv < h.votaciones.length; iv++) {
   const v = h.votaciones[iv];
@@ -75,7 +82,8 @@ for (const iv of muestra) {
   const v = h.votaciones[iv];
   const ctx = contextoDeVotacion(h, iv);
   const { sujetos, etiquetas } = sujetosDeVotacion(h, iv);
-  const { X, detalles, vecinos, recientes, delTema } = calcularFeatures(h, ctx, sujetos);
+  const { X, detalles, vecinos, recientes, delTema, simMax } = calcularFeatures(h, ctx, sujetos);
+  const sinAntecedentes = simMax < 0.35;
   const base = X.map((x) => predecirProbabilidades(modelo, x));
 
   // contexto por bloque con datos previos a la votación
@@ -172,6 +180,7 @@ for (const iv of muestra) {
     base: [0, 0, 0, 0],
     analista: [0, 0, 0, 0],
     marginal: [0, 0, 0, 0],
+    hibrido: [0, 0, 0, 0],
     declarado: [0, 0, 0, 0],
   };
   sujetos.forEach((s, i) => {
@@ -181,7 +190,8 @@ for (const iv of muestra) {
       reales.get(s.grupo) ?? null,
       detalles[i].disciplina,
     );
-    const qq = q.get(s.grupo);
+    // Afilado de las probabilidades de la IA: q_c^γ normalizado (γ = POROTEO_GAMMA, 1 = sin afilar)
+    const qq = afilar(q.get(s.grupo), Number(process.env.POROTEO_GAMMA ?? 1));
     let pm = base[i];
     if (qq) {
       const sq = qq[0] + qq[1] + qq[2] || 1;
@@ -197,6 +207,10 @@ for (const iv of muestra) {
       }
     }
     Pm.push(pm);
+    // Híbrido: sin antecedentes manda la IA (marginal afilado); con antecedentes, método suave.
+    const ph = sinAntecedentes ? pm : aplicarPosturaBlanda(base[i], q.get(s.grupo) ?? null, detalles[i].disciplina);
+    Ph.push(ph);
+    for (let k = 0; k < 4; k++) esp.hibrido[k] += ph[k];
     for (let k = 0; k < 4; k++) esp.marginal[k] += pm[k];
     Pb.push(base[i]);
     Pa.push(pa);
@@ -216,6 +230,8 @@ for (const iv of muestra) {
     soloModelo: `${Math.round(esp.base[0])}–${Math.round(esp.base[1])}`,
     conAnalista: `${Math.round(esp.analista[0])}–${Math.round(esp.analista[1])}`,
     conAnalistaMarginal: `${Math.round(esp.marginal[0])}–${Math.round(esp.marginal[1])}`,
+    hibrido: `${Math.round(esp.hibrido[0])}–${Math.round(esp.hibrido[1])}`,
+    sinAntecedentes,
     conPosturasReales: `${Math.round(esp.declarado[0])}–${Math.round(esp.declarado[1])}`,
     segundos: Math.round(ms / 1000),
   };
@@ -240,6 +256,7 @@ const salida = {
   soloModelo: resumen(Pb),
   conAnalista: resumen(Pa),
   conAnalistaMarginal: resumen(Pm),
+  hibrido: resumen(Ph),
   conPosturasRealesTecho: resumen(Pd),
   modeloLlm: process.env.GEMINI_API_KEY ? 'gemini (gratis)' : 'anthropic',
   tokens,

@@ -183,3 +183,42 @@ además razones de fondo para no usarlo como predictor, aunque se corra la medic
 - Ausencias y abstenciones: baja recall.
 - Datos al 31/10/2026; hay que reentrenar cuando se actualice ¿Cómo Votó?
   (`npm run modelo:actualizar`, ver README).
+
+## Analista de bloques con IA (Gemini, plan gratuito)
+
+**Por qué:** un modelo que solo mira votos pasados no puede saber qué postura van a tomar los
+bloques ante un tema nuevo (p. ej. gestación por sustitución: estimaba 249–0). La práctica actual
+combina un **modelo de punto ideal / estadístico** con un **modelo de lenguaje que lee el proyecto**
+y razona la ubicación de cada bloque (en la línea de Gerrish & Blei, 2011, que usan el texto del
+proyecto para ubicarlo frente a los legisladores, y de trabajos recientes con LLM).
+
+**Cómo:** la IA (`gemini-3.8-flash`, con respaldos) recibe el proyecto y, por bloque, datos reales:
+cómo votaron sus integrantes actuales en votaciones parecidas y en las divididas del mismo tema, y
+su coincidencia con el oficialismo. Devuelve P(A/N/Abst) por bloque y una razón breve. El modelo
+estadístico la reparte por diputado (disciplina, historial, ausencias):
+
+- con antecedentes: actualización suave del modelo con la postura estimada;
+- sin antecedentes (similitud máxima < 0,35): manda la IA, P = Σ_c q_c^γ · P(voto | bloque vota c), γ = 3.
+
+**Prueba honesta:** 22 proyectos votados en general entre el 26/08 y el 22/10/2026 (5.632 votos),
+posteriores al entrenamiento del modelo estadístico (abril/2026) y al conocimiento del LLM.
+Script: `scripts/modelo/evaluar-analista.mjs` (respuestas de la IA guardadas en
+`data/modelo/evaluacion/analista-respuestas.json`).
+
+| | Votos acertados | F1 macro | Log-loss | Error medio por votación A / N |
+|---|---|---|---|---|
+| Solo modelo estadístico | 83,0 % | 0,450 | 0,528 | 23,4 / 25,2 |
+| Modelo + IA (actualización suave) | 84,8 % | 0,472 | 0,456 | 17,3 / 12,5 |
+| Modelo + IA (marginal, γ = 1) | 83,4 % | 0,461 | 0,634 | 41,5 / 37,3 |
+| Modelo + IA (marginal, γ = 3) | 83,8 % | 0,456 | 0,565 | 19,1 / 14,7 |
+| **Modelo + IA, híbrido (producción)** | **84,8 %** | **0,471** | **0,463** | **17,8 / 12,9** |
+| Techo: postura real de cada bloque | 86,5 % | 0,571 | 0,391 | — |
+
+La IA **reduce a la mitad el error en negativos** (25 → 13 por votación) y queda cerca del techo.
+Ejemplos: Mandioca real 231–0 (solo modelo 138–96, con IA 188–51); MERCOSUR–Singapur real 234–4
+(211–22 → 229–9); Ganancias real 139–110 (150–88 → 142–99). Con el híbrido, la gestación por
+sustitución pasa de 249–0 a 115–133.
+
+**Costo y tiempo:** USD 0 (plan gratuito de Gemini). Una consulta por poroteo, de 25 a 120 s según
+la cola del plan gratis (reintenta ante 429/503 y prueba modelos de respaldo). Si la IA no responde,
+la predicción sigue solo con datos y la interfaz lo indica.
