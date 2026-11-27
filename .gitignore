@@ -11,3 +11,6 @@ logs/
 !.vscode/extensions.json
 
 .vercel
+
+# Logs locales de evaluación del modelo
+data/modelo/*.log

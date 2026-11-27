@@ -118,7 +118,27 @@ export async function mutarPoroteo(id, actorId, version, accion, datos = {}) {
     p_accion: accion,
     p_datos: datos,
   });
-  const error = result.error;
+  lanzarErrorRpc(result.error);
+  return unwrap(result, 'poroteos.mutar').data;
+}
+
+/** @returns {Promise<Array<import('../entities/PoroteoUsuario.js').default>>} */
+export function fetchMiembros(id) {
+  return fetchAll(
+    (from, to) =>
+      supabaseAdmin
+        .from('poroteo_usuarios')
+        .select('poroteo_id,user_id,rol,created_at')
+        .eq('poroteo_id', id)
+        .order('created_at')
+        .order('user_id')
+        .range(from, to),
+    'poroteos.miembros',
+  );
+}
+
+/** Traduce los errores de las RPC de poroteos (PT4xx, restricciones) a AppError. */
+export function lanzarErrorRpc(error) {
   if (error) {
     const known = {
       PT401: [401, 'UNAUTHORIZED', 'Se requiere iniciar sesión'],
@@ -144,20 +164,4 @@ export async function mutarPoroteo(id, actorId, version, accion, datos = {}) {
     }
     if (known[error.code]) throw new AppError(...known[error.code]);
   }
-  return unwrap(result, 'poroteos.mutar').data;
-}
-
-/** @returns {Promise<Array<import('../entities/PoroteoUsuario.js').default>>} */
-export function fetchMiembros(id) {
-  return fetchAll(
-    (from, to) =>
-      supabaseAdmin
-        .from('poroteo_usuarios')
-        .select('poroteo_id,user_id,rol,created_at')
-        .eq('poroteo_id', id)
-        .order('created_at')
-        .order('user_id')
-        .range(from, to),
-    'poroteos.miembros',
-  );
 }

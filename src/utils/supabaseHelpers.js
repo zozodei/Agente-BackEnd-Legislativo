@@ -3,7 +3,14 @@ import { logger } from '../config/logger.js';
 import { POSTGREST_MAX_ROWS } from '../config/constants.js';
 
 /** Códigos de Postgres / PostgREST que indican que falta una tabla o función. */
-const MISSING_RELATION_CODES = new Set(['42P01', 'PGRST205', 'PGRST202', '42883']);
+const MISSING_RELATION_CODES = new Set([
+  '42P01',
+  'PGRST205',
+  'PGRST202',
+  '42883',
+  '42703',
+  'PGRST204',
+]);
 
 export function isMissingRelation(error) {
   return Boolean(error && MISSING_RELATION_CODES.has(error.code));

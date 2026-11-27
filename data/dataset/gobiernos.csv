@@ -1,0 +1,10 @@
+﻿id,presidente,partido,desde,hasta,criterio_bloque_oficialista
+menem,Carlos S. Menem,Partido Justicialista,1989-07-08,1999-12-10,justicialista
+de-la-rua,Fernando de la Rúa,Unión Cívica Radical (Alianza),1999-12-10,2001-12-21,(union civica radical|^ucr|alianza)
+transicion-2001,Ramón Puerta / Adolfo Rodríguez Saá / Eduardo Camaño,Partido Justicialista,2001-12-21,2002-01-02,justicialista
+duhalde,Eduardo Duhalde,Partido Justicialista,2002-01-02,2003-05-25,justicialista
+kirchner,Néstor Kirchner,Frente para la Victoria (PJ),2003-05-25,2007-12-10,(frente para la victoria|justicialista)
+fernandez-de-kirchner,Cristina Fernández de Kirchner,Frente para la Victoria (PJ),2007-12-10,2015-12-10,frente para la victoria
+macri,Mauricio Macri,PRO (Cambiemos),2015-12-10,2019-12-10,(^pro$|union pro|^pro |cambiemos)
+fernandez,Alberto Fernández,Frente de Todos (PJ),2019-12-10,2023-12-10,frente de todos
+milei,Javier G. Milei,La Libertad Avanza,2023-12-10,,la libertad avanza

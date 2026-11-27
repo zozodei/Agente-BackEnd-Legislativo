@@ -16,9 +16,19 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "datos:exportar": "node --env-file-if-exists=.env scripts/dataset/exportar-supabase.mjs",
+    "datos:construir": "node scripts/dataset/construir.mjs",
+    "modelo:lsa": "node scripts/modelo/lsa.mjs 96",
+    "modelo:historia": "node scripts/modelo/historia.mjs",
+    "modelo:evaluar": "node scripts/modelo/evaluar.mjs lsa base,logistica,gbdt && node scripts/modelo/reporte.mjs",
+    "modelo:entrenar": "node scripts/modelo/entrenar.mjs logistica",
+    "modelo:actualizar": "npm run datos:exportar && npm run datos:construir && npm run modelo:lsa && npm run modelo:historia && npm run modelo:entrenar",
+    "supabase:cargar": "node --env-file-if-exists=.env scripts/supabase/cargar-datos-limpios.mjs",
+    "e2e": "node --env-file-if-exists=.env scripts/e2e/flujo-poroteo-ia.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
     "@supabase/supabase-js": "2.118.0",
     "cors": "^2.8.6",
     "express": "^5.3.0",

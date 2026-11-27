@@ -486,7 +486,8 @@ describe('Colaboración, publicación y concurrencia', () => {
     ).toBe(400);
     expect(votos).toEqual(snapshot);
     expect(rows[0].version).toBe(3);
-    expect(calls).toEqual([]);
+    // saveVotos lee si el poroteo tiene predicción de IA; no hay escrituras fuera de la RPC.
+    expect(calls.filter((c) => c.operation !== 'select')).toEqual([]);
     expect(db.rpc).toHaveBeenCalledTimes(1);
   });
   it('creación privada recarga versión del trigger sin insertar dueño duplicado', async () => {

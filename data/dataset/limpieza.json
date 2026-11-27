@@ -1,0 +1,86 @@
+{
+  "generado": "2026-11-20T21:38:13.810Z",
+  "problemas": {
+    "bloques_con_variantes_de_nombre": {
+      "bloques_fuente": 309,
+      "bloques_unificados": 304,
+      "ejemplos": [
+        [
+          "Movimiento Popular Neuquino",
+          "Movimiento Popular  Neuquino"
+        ],
+        [
+          "Izquierda Socialista - Frente de Izquierda",
+          "Izquierda Socialista - Frente De Izquierda"
+        ],
+        [
+          "Pts - Frente De Izquierda Y De Trabajadores - Unidad",
+          "Pts-frente De Izquierda Y De Trabajadores Unidad"
+        ],
+        [
+          "Partido Obrero – Frente De Izquierda Y De Trabajadores - Unidad",
+          "Partido Obrero -frente De Izquierda Y De Trabajadores -unidad"
+        ],
+        [
+          "Izquierda Socialista Fit-unidad",
+          "Izquierda Socialista-fit-unidad"
+        ]
+      ]
+    },
+    "coalicion_fuente_inconsistente": "La columna coalicion de cv_bloques asigna, por ejemplo, \"Unión Cívica Radical\" a PRO. No se usa como verdad: la relación con el oficialismo se mide con los votos (ver postura_oficialismo).",
+    "votos_sin_provincia": {
+      "total": 997,
+      "completadas": 997,
+      "sin_resolver": 0
+    },
+    "conteos_distintos_a_los_votos": {
+      "votaciones": 2974,
+      "causa": "En cv_votaciones las columnas afirmativos/negativos/abstenciones/ausentes están corridas un lugar (afirmativos guarda negativos, etc.; ausentes = 0). conteo_coaliciones.tot sí coincide con los votos.",
+      "decision": "Los conteos del dataset limpio se recalculan desde cv_votos. El backend usa conteo_coaliciones.tot."
+    },
+    "resultado_numerico": {
+      "votaciones": 4,
+      "decision": "Se recalcula comparando afirmativos y negativos; el original queda en resultado_original."
+    },
+    "mociones_con_solicitante": {
+      "resueltos": 199,
+      "no_resueltos": 12,
+      "ejemplos_no_resueltos": [
+        "2590: Marcela Rodríguez (0 candidatos)",
+        "634: MARTÍNEZ, Norman Darío (0 candidatos)",
+        "1072: PEREZ Martin Alejandro (2 candidatos)",
+        "2782: DAVID, Néstor (0 candidatos)",
+        "2873: IGLESAS, Fernando (0 candidatos)",
+        "1642: Mena (0 candidatos)",
+        "1676: CORNEJO VIRGINIA (2 candidatos)",
+        "1681: CARRIZO MARIA SOLEDAD (3 candidatos)",
+        "1704: Polledo, Najul y Carrizo (0 candidatos)",
+        "1725: najul, polledo y manzi (0 candidatos)",
+        "1843: A (0 candidatos)",
+        "2956: RODRIGUEZ MACHADO (2 candidatos)"
+      ]
+    },
+    "votaciones_sin_postura_oficialismo": {
+      "total": 1,
+      "motivo": "Ningún diputado del bloque del presidente votó (p. ej. 1993–1995 con nombres de bloque distintos o todos ausentes)."
+    },
+    "personas_que_cambiaron_de_bloque": 892,
+    "personas_con_nombre_repetido": [],
+    "personas_invalidas": [
+      {
+        "id": 1,
+        "nombre": ",",
+        "votos": 5
+      }
+    ],
+    "diputados_actuales_sin_historial": []
+  },
+  "decisiones": [],
+  "fuente": {
+    "repo": "https://github.com/rquiroga7/Como_voto",
+    "autor": "Rodrigo Quiroga",
+    "sitio": "https://comovoto.dev.ar",
+    "commit": "d6c7d5b5ccc91b7377d1f50dfcc9c548d7a8506a"
+  },
+  "datos_al": "2026-10-31T13:18:41.564643"
+}

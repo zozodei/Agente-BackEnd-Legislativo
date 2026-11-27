@@ -2,6 +2,7 @@ import * as poroteosRepository from '../repositories/poroteos.repository.js';
 import { AppError } from '../utils/AppError.js';
 import { paginated } from '../utils/pagination.js';
 import * as participantesRepository from '../repositories/participantes.repository.js';
+import * as prediccionRepository from '../repositories/prediccion.repository.js';
 import { extractPdfText } from './pdf.service.js';
 import { calcularResultado } from './resultado.js';
 
@@ -194,7 +195,38 @@ async function detalleMutado(id, userId, row) {
   return dto;
 }
 
+/** Si el poroteo tiene predicción de la IA, los cambios se registran como ajustes (historial). */
+async function tienePrediccion(id) {
+  try {
+    return Boolean((await prediccionRepository.fetchMetaPrediccion(id))?.version_modelo);
+  } catch (error) {
+    if (error instanceof AppError && error.status === 503) return false; // migración IA sin aplicar
+    throw error;
+  }
+}
+
 export async function saveVotos(id, { version, modo, votos }, userId) {
+  exigirUsuario(userId);
+  if (await tienePrediccion(id)) {
+    const actuales = new Map(
+      (await poroteosRepository.fetchVotos([id])).map((v) => [v.diputado_id, v.voto]),
+    );
+    const nuevos = new Map(votos.map((v) => [v.diputadoId, v.voto]));
+    const ajustes = [];
+    for (const [diputadoId, voto] of nuevos) {
+      if (actuales.get(diputadoId) !== voto)
+        ajustes.push({ diputado_id: diputadoId, voto, motivo: null });
+    }
+    if (modo === 'replace') {
+      for (const diputadoId of actuales.keys()) {
+        if (!nuevos.has(diputadoId))
+          ajustes.push({ diputado_id: diputadoId, voto: 'INDEFINIDO', motivo: null });
+      }
+    }
+    if (!ajustes.length) return getPoroteo(id, userId);
+    const row = await prediccionRepository.ajustarVotos(id, userId, version, ajustes);
+    return detalleMutado(id, userId, row);
+  }
   const row = await poroteosRepository.mutarPoroteo(id, userId, version, 'guardar_votos', {
     modo,
     votos: votos.map((v) => ({

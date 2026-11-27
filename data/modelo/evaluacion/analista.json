@@ -1,0 +1,311 @@
+{
+ "desde": "2026-07-01",
+ "votaciones": 22,
+ "filas": 5632,
+ "soloModelo": {
+  "accuracy": 0.8295454545454546,
+  "f1Macro": 0.44985511196219596,
+  "logloss": 0.5275829448517837,
+  "ece": 0.07288161609672615,
+  "f1Negativo": 0.7596899224806202
+ },
+ "conAnalista": {
+  "accuracy": 0.8481889204545454,
+  "f1Macro": 0.4720721186735564,
+  "logloss": 0.4557933234315809,
+  "ece": 0.015308667135925316,
+  "f1Negativo": 0.8539944903581268
+ },
+ "conAnalistaMarginal": {
+  "accuracy": 0.8382457386363636,
+  "f1Macro": 0.4564742150591192,
+  "logloss": 0.5648325933143944,
+  "ece": 0.04153407444989607,
+  "f1Negativo": 0.7982758620689656
+ },
+ "hibrido": {
+  "accuracy": 0.8478338068181818,
+  "f1Macro": 0.4713884318086194,
+  "logloss": 0.46261228725589393,
+  "ece": 0.013590398612020153,
+  "f1Negativo": 0.8513761467889908
+ },
+ "conPosturasRealesTecho": {
+  "accuracy": 0.8654119318181818,
+  "f1Macro": 0.5706785691537032,
+  "logloss": 0.39064882189226435,
+  "ece": 0.025588329071992624,
+  "f1Negativo": 0.9259259259259259
+ },
+ "modeloLlm": "gemini (gratis)",
+ "tokens": {
+  "entrada": 73769,
+  "salida": 33571
+ },
+ "detalle": [
+  {
+   "fecha": "2026-08-26",
+   "titulo": "Reforma Carta Orgánica del BCRA",
+   "real": "144–102",
+   "soloModelo": "140–101",
+   "conAnalista": "138–106",
+   "conAnalistaMarginal": "142–101",
+   "hibrido": "138–106",
+   "sinAntecedentes": false,
+   "conPosturasReales": "141–101",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-26",
+   "titulo": "Modificación Declaración Jurada de Ganancias",
+   "real": "139–110",
+   "soloModelo": "150–88",
+   "conAnalista": "142–99",
+   "conAnalistaMarginal": "140–101",
+   "hibrido": "142–99",
+   "sinAntecedentes": false,
+   "conPosturasReales": "129–114",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Acuerdo Libre Comercio MERCOSUR-Singapur",
+   "real": "234–4",
+   "soloModelo": "211–22",
+   "conAnalista": "226–12",
+   "conAnalistaMarginal": "227–12",
+   "hibrido": "226–12",
+   "sinAntecedentes": false,
+   "conPosturasReales": "235–4",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Tratado de Cooperación en Patentes",
+   "real": "147–93",
+   "soloModelo": "180–57",
+   "conAnalista": "179–63",
+   "conAnalistaMarginal": "168–76",
+   "hibrido": "179–63",
+   "sinAntecedentes": false,
+   "conPosturasReales": "149–95",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Reducción IVA Fécula de Mandioca",
+   "real": "231–0",
+   "soloModelo": "138–96",
+   "conAnalista": "202–39",
+   "conAnalistaMarginal": "237–6",
+   "hibrido": "202–39",
+   "sinAntecedentes": false,
+   "conPosturasReales": "235–7",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 250 - C.A.B.A. DECLARACIÓN COMO CAPITAL NACIONAL DEL TEATRO. VOT. EN GRAL. Y PART.",
+   "real": "207–0",
+   "soloModelo": "187–24",
+   "conAnalista": "212–6",
+   "conAnalistaMarginal": "194–25",
+   "hibrido": "212–6",
+   "sinAntecedentes": false,
+   "conPosturasReales": "218–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 249 - CIUDAD DE CHIVILCOY, PROV. DE BS. AS. DECLARACIÓN COMO CAPITAL NACIONAL DEL COLECCIONISMO. VOT. EN GRAL. Y PART.",
+   "real": "206–0",
+   "soloModelo": "197–17",
+   "conAnalista": "217–4",
+   "conAnalistaMarginal": "213–9",
+   "hibrido": "217–4",
+   "sinAntecedentes": false,
+   "conPosturasReales": "221–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 248 - PROVINCIA DE SAN JUAN, CUNA DE DOMINGO FAUSTINO SARMIENTO Y CAPITAL NACIONAL DE LA EDUCACIÓN. VOT. EN GRAL. Y PART.",
+   "real": "208–0",
+   "soloModelo": "193–26",
+   "conAnalista": "217–7",
+   "conAnalistaMarginal": "219–5",
+   "hibrido": "217–7",
+   "sinAntecedentes": false,
+   "conPosturasReales": "223–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 247 - PROVINCIA DE SANTA CRUZ. DECLARACIÓN COMO CAPITAL NACIONAL DE LA NATACIÓN DE AGUAS FRÍAS Y OTRAS CUESTIONES CONEXAS. VOT. EN GRAL. Y PART.",
+   "real": "205–0",
+   "soloModelo": "203–15",
+   "conAnalista": "222–4",
+   "conAnalistaMarginal": "219–9",
+   "hibrido": "222–4",
+   "sinAntecedentes": false,
+   "conPosturasReales": "226–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 246 - PROVINCIA DE TUCUMÁN. DECLARACIÓN COMO CAPITAL NACIONAL DEL ECOTURISMO, Y OTRAS CUESTIONES CONEXAS. VOT. EN GRAL. Y PART.",
+   "real": "206–0",
+   "soloModelo": "203–14",
+   "conAnalista": "221–4",
+   "conAnalistaMarginal": "215–10",
+   "hibrido": "221–4",
+   "sinAntecedentes": false,
+   "conPosturasReales": "225–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 245 - MUNICIPIO DE SAN JOSÉ DE LOS CERRILLOS, PROV. DE SALTA. DECLARACIÓN COMO CAPITAL NACIONAL DEL CERDO NEGRO. VOT. EN GRAL. Y PART.",
+   "real": "203–0",
+   "soloModelo": "195–20",
+   "conAnalista": "214–7",
+   "conAnalistaMarginal": "216–7",
+   "hibrido": "214–7",
+   "sinAntecedentes": false,
+   "conPosturasReales": "221–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 244 - CIUDAD DE CAÁ CATÍ, PROV. DE CORRIENTES. DECLARACIÓN COMO CAPITAL NACIONAL DE LA PRODUCCIÓN BUBALINA. VOT. EN GRAL. Y PART.",
+   "real": "207–0",
+   "soloModelo": "186–25",
+   "conAnalista": "214–6",
+   "conAnalistaMarginal": "208–13",
+   "hibrido": "214–6",
+   "sinAntecedentes": false,
+   "conPosturasReales": "219–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 243 - CIUDAD DE SAN MIGUEL DE TUCUMÁN. DECLARACIÓN COMO CAPITAL SIMBÓLICA DE LA REP. ARG. EL DÍA 9 DE JULIO DE CADA AÑO. VOT EN GRAL. Y PART.",
+   "real": "206–0",
+   "soloModelo": "201–15",
+   "conAnalista": "218–5",
+   "conAnalistaMarginal": "215–9",
+   "hibrido": "218–5",
+   "sinAntecedentes": false,
+   "conPosturasReales": "223–0",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Reorganización Cámara Federal de Tucumán",
+   "real": "205–0",
+   "soloModelo": "164–52",
+   "conAnalista": "205–15",
+   "conAnalistaMarginal": "217–3",
+   "hibrido": "205–15",
+   "sinAntecedentes": false,
+   "conPosturasReales": "217–3",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Creación Sala II Mar del Plata",
+   "real": "210–0",
+   "soloModelo": "161–58",
+   "conAnalista": "204–17",
+   "conAnalistaMarginal": "214–8",
+   "hibrido": "204–17",
+   "sinAntecedentes": false,
+   "conPosturasReales": "219–3",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "O.D. 270 - RITUAL, CELEB.Y PEREGR. DEL \"CAMINO DE BROCHERO\". DECL. COMO PARTE INTEGR. DEL PATRIMONIO INMMATERIAL DE LA REP. ARG. VOT EN G. Y P.",
+   "real": "207–0",
+   "soloModelo": "207–21",
+   "conAnalista": "229–3",
+   "conAnalistaMarginal": "229–2",
+   "hibrido": "229–2",
+   "sinAntecedentes": true,
+   "conPosturasReales": "230–1",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-08-27",
+   "titulo": "Ley Joaquín",
+   "real": "220–0",
+   "soloModelo": "206–21",
+   "conAnalista": "227–4",
+   "conAnalistaMarginal": "228–3",
+   "hibrido": "227–4",
+   "sinAntecedentes": false,
+   "conPosturasReales": "231–0",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-10-21",
+   "titulo": "Inviolabilidad de la Propiedad Privada",
+   "real": "124–119",
+   "soloModelo": "152–79",
+   "conAnalista": "144–89",
+   "conAnalistaMarginal": "144–90",
+   "hibrido": "144–90",
+   "sinAntecedentes": true,
+   "conPosturasReales": "121–113",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-10-21",
+   "titulo": "Trazabilidad de Medicamentos de Alto Riesgo",
+   "real": "241–1",
+   "soloModelo": "190–9",
+   "conAnalista": "198–3",
+   "conAnalistaMarginal": "186–15",
+   "hibrido": "186–15",
+   "sinAntecedentes": true,
+   "conPosturasReales": "199–0",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-10-21",
+   "titulo": "Vandalismo Rural",
+   "real": "162–77",
+   "soloModelo": "149–78",
+   "conAnalista": "139–90",
+   "conAnalistaMarginal": "138–91",
+   "hibrido": "139–90",
+   "sinAntecedentes": false,
+   "conPosturasReales": "139–90",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-10-21",
+   "titulo": "O.D. 442 - INMUEBLE PROP. DEL ESTADO NAC., CAEB, EN BARRANQUERAS, CHACO. TRANSFERENCIA A TÍTULO GRATUITO A LA PROV. DEL CHACO. VOT. EN GRAL. Y PART.",
+   "real": "235–0",
+   "soloModelo": "200–9",
+   "conAnalista": "214–3",
+   "conAnalistaMarginal": "185–33",
+   "hibrido": "214–3",
+   "sinAntecedentes": false,
+   "conPosturasReales": "217–0",
+   "segundos": 0
+  },
+  {
+   "fecha": "2026-10-22",
+   "titulo": "Régimen Permanente de Discapacidad",
+   "real": "237–9",
+   "soloModelo": "200–25",
+   "conAnalista": "164–61",
+   "conAnalistaMarginal": "126–99",
+   "hibrido": "164–61",
+   "sinAntecedentes": false,
+   "conPosturasReales": "224–0",
+   "segundos": 0
+  }
+ ]
+}

@@ -3,7 +3,7 @@ import { fetchAll, sanitizeSearch, unwrap } from '../utils/supabaseHelpers.js';
 import { toRange } from '../utils/pagination.js';
 
 const LIST_COLUMNS =
-  'id,titulo,titulo_sitio,nombre_ley,ley_id,etiqueta,es_general,fecha,anio,resultado,afirmativos,negativos,abstenciones,ausentes,url';
+  'id,titulo,titulo_sitio,nombre_ley,ley_id,etiqueta,es_general,fecha,anio,resultado,afirmativos,negativos,abstenciones,ausentes,conteo_coaliciones,url';
 
 /** @returns {Promise<{data: Array<Partial<import('../entities/CvVotacion.js').default>>, count: number | null | undefined}>} */
 export async function fetchVotaciones({

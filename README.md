@@ -32,6 +32,62 @@ Los datos de diputados y votaciones ya están cargados en Supabase. Las tablas p
 
 Si no se aplicaron, los endpoints de `/api/poroteos` responden `503 SERVICE_UNAVAILABLE` con un mensaje explicativo, y la alineación con el bloque del perfil viene en `null`.
 
+## Poroteo con IA: levantarlo desde cero
+
+El motor de predicción vive en `src/prediccion/` y usa los artefactos de `data/modelo/` (ya
+versionados: no hace falta entrenar para levantar la app). Documentación del trabajo:
+[DIAGNOSTICO](DIAGNOSTICO.md) · [EVALUACION_MODELOS](EVALUACION_MODELOS.md) ·
+[DECISIONES](DECISIONES.md) · [PROGRESO](PROGRESO.md) · [GUIA_PRESENTACION](GUIA_PRESENTACION.md) ·
+[dataset](data/README.md).
+
+**1. Base de datos.** Aplicar `supabase/migrations/20261120120000_poroteo_ia.sql` (SQL Editor de
+Supabase, o `supabase db push`) y cargar los datos limpios y embeddings:
+
+```bash
+npm run supabase:cargar      # idempotente; usa SUPABASE_URL y SUPABASE_SECRET_KEY del .env
+```
+
+**2. API.** `npm run dev`. Con `GEMINI_API_KEY` (gratis: https://aistudio.google.com/apikey) se activa
+el **analista de bloques**: la IA lee el proyecto y estima la postura de cada bloque, y el modelo
+estadístico la reparte diputado por diputado. Sin clave, la predicción usa solo el historial.
+
+**3. Probar de punta a punta** (crea un poroteo, estima, ajusta, vuelve a la IA y lo borra):
+
+```bash
+E2E_EMAIL=... E2E_PASSWORD=... E2E_API=http://localhost:4000/api npm run e2e
+```
+
+**Entorno local completo (sin tocar producción):** Supabase CLI + Docker.
+
+```bash
+mkdir ../supabase-local && cd ../supabase-local && npx supabase init
+cp ../Agente-BackEnd-Legislativo/supabase/local/*.sql ../Agente-BackEnd-Legislativo/supabase/migrations/*.sql supabase/migrations/
+npx supabase start                                     # aplica todas las migraciones
+cd ../Agente-BackEnd-Legislativo
+node scripts/supabase/cargar-origen-local.mjs          # réplica de las tablas de origen
+# .env.local con las claves que imprime "supabase start" (API_URL, PUBLISHABLE_KEY, SECRET_KEY)
+node --env-file=.env.local scripts/supabase/cargar-datos-limpios.mjs
+node --env-file=.env.local src/server.js
+node --env-file=.env.local scripts/e2e/flujo-poroteo-ia.mjs   # crea su propia cuenta de prueba
+```
+
+**Actualizar datos y modelo** (cuando ¿Cómo Votó? publique votaciones nuevas):
+
+```bash
+npm run modelo:actualizar    # exporta, limpia, LSA, historia y reentrena (~3 min)
+npm run modelo:evaluar       # backtesting + tablas para EVALUACION_MODELOS.md
+npm run supabase:cargar      # sube los datos limpios a Supabase
+```
+
+| Método | Ruta | Descripción |
+| --- | --- | --- |
+| `GET` | `/prediccion/modelo` | Versión y métricas del modelo (pública) |
+| `POST` | `/prediccion/analizar` | `{ titulo, resumen?, texto? }` → tema, tipo y votaciones parecidas (pública) |
+| `POST` | `/poroteos/:id/prediccion` | `{ version, supuestos? }` → predice los 257 y guarda (reemplaza la anterior; respeta ajustes) |
+| `GET` | `/poroteos/:id/prediccion` | Predicciones con probabilidades, confianza, explicación, factores y ajustes |
+| `POST` | `/poroteos/:id/ajustes` | `{ version, ajustes: [{ diputadoId, voto | null, motivo? }] }` (`null` = volver a la IA) |
+| `GET` | `/poroteos/:id/resultado` | `?tipoMayoria=simple|absoluta|dos_tercios` → totales y resultado |
+
 ## Variables de entorno
 
 | Variable                   | Obligatoria | Descripción                                                     |
@@ -47,6 +103,11 @@ Si no se aplicaron, los endpoints de `/api/poroteos` responden `503 SERVICE_UNAV
 | `RATE_LIMIT_MAX`           |             | Requests por ventana por IP (default `300`)                     |
 | `RATE_LIMIT_WRITE_MAX`     |             | Escrituras por ventana por IP (default `60`)                    |
 | `CACHE_DIPUTADOS_MINUTOS`  |             | Caché en memoria de los 257 diputados (default `10`)            |
+| `GEMINI_API_KEY`           |             | Recomendado (gratis): analista de bloques con IA. Nunca en el front |
+| `GEMINI_MODELO`            |             | Modelo de Gemini (default `gemini-3.8-flash`, con respaldos)    |
+| `ANTHROPIC_API_KEY`        |             | Alternativa paga al analista y explicaciones redactadas         |
+| `LLM_MODELO`               |             | Modelo del LLM (default `claude-opus-5-5`)                      |
+| `LLM_TIMEOUT_MS`           |             | Tiempo máximo por llamada al LLM (default `20000`)              |
 
 Si falta una obligatoria, el servidor no levanta e indica cuál.
 
